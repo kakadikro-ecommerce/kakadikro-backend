@@ -1,4 +1,13 @@
 import mongoose from "mongoose";
+import { mapImageRecordToResponse } from "../../shared/utils/image.js";
+
+const transformProductImages = (_, ret) => {
+  if (Array.isArray(ret.images)) {
+    ret.images = ret.images.map(mapImageRecordToResponse);
+  }
+
+  return ret;
+};
 
 const variantSchema = new mongoose.Schema({
   weight: {
@@ -97,8 +106,8 @@ const productSchema = new mongoose.Schema({
 
 }, {
   timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  toJSON: { virtuals: true, transform: transformProductImages },
+  toObject: { virtuals: true, transform: transformProductImages }
 });
 
 productSchema.virtual("cartItems", {

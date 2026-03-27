@@ -21,7 +21,7 @@ router.post(
   asyncHandler(cartController.addItemToCart)
 );
 
-router.patch(
+router.put(
   "/items/:itemId",
   validateRequest(updateCartItemValidation),
   asyncHandler(cartController.updateCartItemQuantity)

@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const PAYMENT_STATUSES = ["pending", "success", "failed"];
+const PAYMENT_STATUSES = ["pending", "success", "failed", "refunded"];
 
 const paymentSchema = new mongoose.Schema(
   {
@@ -35,6 +35,29 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       enum: PAYMENT_STATUSES,
       default: "pending",
+    },
+    refund: {
+      razorpayRefundId: {
+        type: String,
+        default: "",
+      },
+      amount: {
+        type: Number,
+        min: 0,
+        default: 0,
+      },
+      status: {
+        type: String,
+        default: "",
+      },
+      refundedAt: {
+        type: Date,
+        default: null,
+      },
+      notes: {
+        type: String,
+        default: "",
+      },
     },
   },
   {

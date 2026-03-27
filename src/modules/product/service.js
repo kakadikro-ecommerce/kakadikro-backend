@@ -43,8 +43,16 @@ export const getAllProducts = async (query) => {
     filter.name = { $regex: search, $options: "i" };
   }
 
+  const escapeRegex = (text) =>
+    text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
   if (category) {
-    filter.category = category;
+    const trimmedCategory = escapeRegex(category.trim());
+
+    filter.category = {
+      $regex: `^${trimmedCategory}$`,
+      $options: "i",
+    };
   }
 
   if (minPrice || maxPrice) {
@@ -87,8 +95,16 @@ export const getAllProductsAdmin = async (query) => {
     filter.name = { $regex: search, $options: "i" };
   }
 
+  const escapeRegex = (text) =>
+    text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
   if (category) {
-    filter.category = category;
+    const trimmedCategory = escapeRegex(category.trim());
+
+    filter.category = {
+      $regex: `^${trimmedCategory}$`,
+      $options: "i",
+    };
   }
 
   if (minPrice || maxPrice) {

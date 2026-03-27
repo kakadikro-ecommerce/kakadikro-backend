@@ -10,9 +10,9 @@ import validateRequest from "../../middlewares/validate-request.js";
 
 const router = express.Router();
 
-router.get("/profile", protect, userController.getProfile);
+router.get("/get-profile", protect, userController.getProfile);
 
-router.put("/profile", protect, validateRequest(updateProfileValidation), userController.updateProfile);
+router.put("/update-profile", protect, validateRequest(updateProfileValidation), userController.updateProfile);
 
 router.put("/change-password/:id", protect, validateRequest(changePasswordValidation), userController.changePassword);
 

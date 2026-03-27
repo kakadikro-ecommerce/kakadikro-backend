@@ -96,6 +96,30 @@ const shippingAddressSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const shipmentSchema = new mongoose.Schema(
+  {
+    trackingId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    courierName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    dispatchedAt: {
+      type: Date,
+      default: null,
+    },
+    deliveredAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  { _id: false }
+);
+
 const orderSchema = new mongoose.Schema(
   {
     orderNumber: {
@@ -124,7 +148,10 @@ const orderSchema = new mongoose.Schema(
     shippingAddress: {
       type: shippingAddressSchema,
       required: true,
-      immutable: true,
+    },
+    shipment: {
+      type: shipmentSchema,
+      default: () => ({}),
     },
     paymentMethod: {
       type: String,
@@ -176,7 +203,6 @@ const orderSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: "",
-      immutable: true,
     },
     adminNote: {
       type: String,
@@ -188,10 +214,6 @@ const orderSchema = new mongoose.Schema(
       default: Date.now,
     },
     paidAt: {
-      type: Date,
-      default: null,
-    },
-    deliveredAt: {
       type: Date,
       default: null,
     },

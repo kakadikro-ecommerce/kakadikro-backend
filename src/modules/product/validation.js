@@ -1,7 +1,7 @@
 import Joi from "joi";
 
 const imageSchema = Joi.object({
-  url: Joi.string().uri().required(),
+  url: Joi.string().trim().required(),
   altText: Joi.string().allow("").optional(),
 });
 

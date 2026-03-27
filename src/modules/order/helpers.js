@@ -1,5 +1,6 @@
 import AppError from "../../shared/errors/app-error.js";
 import { badRequest, createHttpError, forbidden } from "../../shared/errors/http-error.js";
+import { getImageUrl } from "../../shared/utils/image.js";
 
 export const buildOrderNumber = () => {
   const timestamp = Date.now().toString().slice(-8);
@@ -57,6 +58,19 @@ export const attachOrderRelations = (query) =>
   query
     .populate("user", "name email role")
     .populate("items.product", "name slug category images variants");
+
+export const normalizeOrderImages = (order) => {
+  if (!order?.items || !Array.isArray(order.items)) {
+    return order;
+  }
+
+  order.items = order.items.map((item) => ({
+    ...item,
+    productImage: getImageUrl(item.product?.images?.[0]?.url || item.productImage || "") || "",
+  }));
+
+  return order;
+};
 
 export const ensureOrderAccess = (order, requester) => {
   const isOwner = order.user?._id

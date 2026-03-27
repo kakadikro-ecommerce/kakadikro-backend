@@ -4,6 +4,7 @@ import {
   createHttpError,
   ensureFound,
 } from "../../shared/errors/http-error.js";
+import { getImageUrl } from "../../shared/utils/image.js";
 
 export const findVariantByWeight = (product, weight) =>
   product.variants.find((variant) => variant.weight === weight);
@@ -27,7 +28,7 @@ export const buildCartSummary = (cart) => {
       product: product?._id || item.product,
       name: product?.name || item.name,
       slug: product?.slug || item.slug || "",
-      productImage: product?.images?.[0]?.url || item.productImage || "",
+      productImage: getImageUrl(product?.images?.[0]?.url || item.productImage || "") || "",
       category: product?.category || "",
       weight: item.weight,
       quantity: item.quantity,

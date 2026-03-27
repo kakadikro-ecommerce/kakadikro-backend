@@ -1,8 +1,7 @@
 export const ORDER_STATUSES = [
   "pending",
   "confirmed",
-  "processing",
-  "shipped",
+  "dispatched",
   "delivered",
   "cancelled",
 ];
@@ -16,8 +15,6 @@ export const PAYMENT_STATUSES = [
 
 export const PAYMENT_METHODS = [
   "cod",
-  "razorpay",
   "card",
   "upi",
-  "netbanking",
 ];

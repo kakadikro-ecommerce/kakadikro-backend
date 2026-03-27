@@ -38,4 +38,21 @@ export const updateOrderStatusValidation = Joi.object({
     .valid(...PAYMENT_STATUSES)
     .optional(),
   adminNote: Joi.string().trim().allow("").optional(),
-}).or("orderStatus", "paymentStatus", "adminNote");
+  trackingId: Joi.string().trim().allow("").optional(),
+  trackingNumber: Joi.string().trim().allow("").optional(),
+  courierName: Joi.string().trim().allow("").optional(),
+  courier: Joi.string().trim().allow("").optional(),
+  shipment: Joi.object({
+    trackingId: Joi.string().trim().allow("").optional(),
+    courierName: Joi.string().trim().allow("").optional(),
+  }).optional(),
+}).or(
+  "orderStatus",
+  "paymentStatus",
+  "adminNote",
+  "trackingId",
+  "trackingNumber",
+  "courierName",
+  "courier",
+  "shipment"
+);

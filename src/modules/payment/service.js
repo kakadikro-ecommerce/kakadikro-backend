@@ -9,6 +9,7 @@ import {
 } from "../../shared/errors/http-error.js";
 import {
   getRazorpayInstance,
+  isOnlineOrderPayment,
   rethrowPaymentServiceError
 } from "../payment/helpers.js"
 
@@ -28,7 +29,7 @@ export const createPaymentOrder = async (userId, payload) => {
       throw badRequest("Payment already completed for this order");
     }
 
-    if (order.paymentMethod === "cod") {
+    if (!isOnlineOrderPayment(order.paymentMethod)) {
       throw badRequest("Online payment is not available for cash on delivery orders");
     }
 
@@ -110,7 +111,6 @@ export const verifyPayment = async (userId, payload) => {
     await payment.save();
 
     order.paymentStatus = "paid";
-    order.orderStatus = order.orderStatus === "pending" ? "processing" : order.orderStatus;
     if (!order.paidAt) {
       order.paidAt = new Date();
     }

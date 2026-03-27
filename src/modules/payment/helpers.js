@@ -26,3 +26,5 @@ export const rethrowPaymentServiceError = (error, message) => {
     const statusCode = error?.statusCode || error?.status || 500;
     throw new AppError(message, statusCode, error?.message || null);
 };
+
+export const isOnlineOrderPayment = (paymentMethod) => paymentMethod !== "cod";

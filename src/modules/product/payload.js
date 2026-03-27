@@ -1,4 +1,5 @@
 import { uploadMultipleFilesFromRequest } from "../../shared/upload/service.js";
+import { normalizeImageRecordForStorage } from "../../shared/utils/image.js";
 
 export const parseMultipartPayload = (body) => {
   const parsedBody = { ...body };
@@ -60,7 +61,7 @@ export const normalizeAltTexts = (value) => {
 
 export const buildUploadedImages = (files, altTexts) => {
   return files.map((file, index) => ({
-    url: file.location,
+    url: file.key,
     altText: altTexts[index] || "",
   }));
 };
@@ -85,7 +86,7 @@ export const prepareProductPayload = async (req, res) => {
   const parsedBody = parseMultipartPayload(req.body);
   const altTexts = normalizeAltTexts(parsedBody.imageAltTexts);
   const existingImages = Array.isArray(parsedBody.existingImages)
-    ? parsedBody.existingImages
+    ? parsedBody.existingImages.map(normalizeImageRecordForStorage)
     : [];
   const uploadedImages = buildUploadedImages(uploadedFiles, altTexts);
   const hasExplicitImages =

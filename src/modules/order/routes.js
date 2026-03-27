@@ -26,15 +26,36 @@ router.get(
   asyncHandler(orderController.getMyOrders)
 );
 
-router.get("/:id", asyncHandler(orderController.getOrderById));
+router.put(
+  "/update-order/:id",
+  authorizeRoles("user"),
+  asyncHandler(orderController.updateMyOrder)
+);
+
+router.put(
+  "/cancel/:id",
+  authorizeRoles("user"),
+  asyncHandler(orderController.cancelOrder)
+);
+
+router.get(
+  "/track/:orderNumber",
+  authorizeRoles("user"),
+  asyncHandler(orderController.trackOrder));
 
 router.get(
   "/",
   authorizeRoles("admin"),
   asyncHandler(orderController.getAllOrders)
+); 
+
+router.get(
+  "/:id",
+  authorizeRoles("admin"),
+  asyncHandler(orderController.getOrderById)
 );
 
-router.patch(
+router.put(
   "/status/:id",
   authorizeRoles("admin"),
   validateRequest(updateOrderStatusValidation),

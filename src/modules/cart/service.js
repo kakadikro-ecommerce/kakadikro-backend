@@ -92,7 +92,7 @@ export const updateCartItemQuantity = async (userId, itemId, payload) => {
     ensureValidObjectId(userId, "user");
     ensureValidObjectId(itemId, "cart item");
 
-    const cart = ensureFound(await Cart.findOne({ user: userId }), "Cart not found");
+    const cart = ensureFound(await getOrCreateCart(userId), "Cart not found");
     const item = ensureFound(cart.items.id(itemId), "Cart item not found");
 
     const product = ensureActiveProduct(await Product.findById(item.product));
@@ -130,7 +130,7 @@ export const removeCartItem = async (userId, itemId) => {
     ensureValidObjectId(userId, "user");
     ensureValidObjectId(itemId, "cart item");
 
-    const cart = ensureFound(await Cart.findOne({ user: userId }), "Cart not found");
+    const cart = ensureFound(await getOrCreateCart(userId), "Cart not found");
     const item = ensureFound(cart.items.id(itemId), "Cart item not found");
 
     item.deleteOne();

@@ -29,13 +29,34 @@ export const getMyOrders = async (req, res, next) => {
   }
 };
 
-export const getOrderById = async (req, res, next) => {
+export const trackOrder = async (req, res, next) => {
   try {
-    const order = await orderService.getOrderById(req.params.id, req.user);
+    const order = await orderService.trackOrder(
+      req.params.orderNumber,
+      req.user
+    );
 
     return res.status(200).json({
       success: true,
       message: "Order fetched successfully",
+      data: order,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const updateMyOrder = async (req, res, next) => {
+  try {
+    const order = await orderService.updateMyOrder(
+      req.params.id,
+      req.user.id,
+      req.body
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Order updated successfully",
       data: order,
     });
   } catch (error) {
@@ -56,6 +77,20 @@ export const getAllOrders = async (req, res, next) => {
   } catch (error) {
     return next(error);
   }
+}; 
+
+export const getOrderById = async (req, res, next) => {
+  try {
+    const order = await orderService.getOrderById(req.params.id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Order fetched successfully",
+      data: order,
+    });
+  } catch (error) {
+    return next(error);
+  }
 };
 
 export const updateOrderStatus = async (req, res, next) => {
@@ -65,6 +100,20 @@ export const updateOrderStatus = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: "Order updated successfully",
+      data: order,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}; 
+
+export const cancelOrder = async (req, res, next) => {
+  try {
+    const order = await orderService.cancelOrder(req.params.id, req.user.id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Order cancelled successfully",
       data: order,
     });
   } catch (error) {
