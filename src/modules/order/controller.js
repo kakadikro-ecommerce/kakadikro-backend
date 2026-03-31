@@ -120,3 +120,17 @@ export const cancelOrder = async (req, res, next) => {
     return next(error);
   }
 };
+
+export const deleteOrder = async (req, res, next) => {
+  try {
+    const order = await orderService.deleteOrder(req.params.id, req.user.id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Order deleted successfully",
+      data: order,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};

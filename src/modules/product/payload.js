@@ -1,6 +1,55 @@
 import { uploadMultipleFilesFromRequest } from "../../shared/upload/service.js";
 import { normalizeImageRecordForStorage } from "../../shared/utils/image.js";
 
+export const parseArrayField = (value, fieldName) => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === "string" ? item.trim() : String(item).trim()))
+      .filter(Boolean);
+  }
+
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return [];
+  }
+
+  if (trimmedValue.startsWith("[")) {
+    try {
+      const parsedValue = JSON.parse(trimmedValue);
+
+      if (!Array.isArray(parsedValue)) {
+        const error = new Error(`Invalid JSON array format in ${fieldName}`);
+        error.statusCode = 400;
+        throw error;
+      }
+
+      return parsedValue
+        .map((item) =>
+          typeof item === "string" ? item.trim() : String(item).trim()
+        )
+        .filter(Boolean);
+    } catch (error) {
+      if (error.statusCode) {
+        throw error;
+      }
+
+      const err = new Error(`Invalid JSON format in ${fieldName}`);
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  return trimmedValue
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
 export const parseMultipartPayload = (body) => {
   const parsedBody = { ...body };
   const jsonFields = ["variants", "existingImages"];
@@ -23,12 +72,17 @@ export const parseMultipartPayload = (body) => {
   const arrayFields = ["ingredients", "features", "benefits", "tags"];
 
   for (const field of arrayFields) {
-    if (typeof parsedBody[field] === "string") {
-      parsedBody[field] = parsedBody[field]
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean);
+    if (parsedBody[field] !== undefined) {
+      parsedBody[field] = parseArrayField(parsedBody[field], field);
     }
+  }
+
+  if (typeof parsedBody.isActive === "string") {
+    parsedBody.isActive = parsedBody.isActive === "true";
+  }
+
+  if (typeof parsedBody.isFeatured === "string") {
+    parsedBody.isFeatured = parsedBody.isFeatured === "true";
   }
 
   return parsedBody;

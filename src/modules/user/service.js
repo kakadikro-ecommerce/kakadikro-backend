@@ -6,7 +6,7 @@ import {
 } from "../../shared/utils/pagination.js";
 
 export const getUserProfile = async (userId) => {
-  const user = await User.findById(userId).select("-password");
+  const user = await User.findOne({ _id: userId, isActive: true }).select("-password");
 
   if (!user) {
     const error = new Error("User not found");
@@ -20,7 +20,7 @@ export const getUserProfile = async (userId) => {
 export const updateUserProfile = async (userId, data) => {
   const { name } = data;
 
-  const user = await User.findById(userId);
+  const user = await User.findOne({ _id: userId, isActive: true });
 
   if (!user) {
     const error = new Error("User not found");
@@ -42,7 +42,7 @@ export const updateUserProfile = async (userId, data) => {
 export const changePassword = async (id, data) => {
   const { currentPassword, newPassword } = data;
 
-  const user = await User.findById(id).select("+password");
+  const user = await User.findOne({ _id: id, isActive: true }).select("+password");
 
   if (!user) {
     const error = new Error("User not found");
@@ -72,26 +72,33 @@ export const getAllUsers = async (query) => {
     search = "",
     sortBy = "createdAt",
     order = "desc",
+    isActive,
   } = query;
 
   const { page, limit, skip } = normalizePagination(query);
 
   const searchFilter = search
     ? {
-        $or: [
-          { name: { $regex: search, $options: "i" } },
-          { email: { $regex: search, $options: "i" } },
-        ],
-      }
+      $or: [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ],
+    }
     : {};
 
   const roleFilter = {
     role: { $ne: "admin" },
   };
 
+  const activeFilter =
+    isActive !== undefined
+      ? { isActive: isActive === "true" }
+      : { isActive: true };
+
   const filter = {
     ...searchFilter,
     ...roleFilter,
+    ...activeFilter,
   };
 
   const sort = {
@@ -112,7 +119,7 @@ export const getAllUsers = async (query) => {
     pagination: buildPaginationMeta({ total, page, limit }),
     users,
   };
-}; 
+};
 
 export const getUserById = async (id) => {
   const user = await User.findById(id).select("-password");
@@ -126,7 +133,7 @@ export const getUserById = async (id) => {
   return user;
 };
 
-export const updateUser = async (id, data) => {
+export const updateUser = async (id, data, updatedBy) => {
   const user = await User.findById(id);
 
   if (!user) {
@@ -137,7 +144,18 @@ export const updateUser = async (id, data) => {
 
   user.name = data.name || user.name;
   user.role = data.role || user.role;
-  user.isActive = data.isActive ?? user.isActive;
+
+  if (typeof data.isActive === "boolean") {
+    user.isActive = data.isActive;
+
+    if (data.isActive) {
+      user.deletedAt = null;
+      user.deletedBy = null;
+    } else {
+      user.deletedAt = new Date();
+      user.deletedBy = updatedBy || null;
+    }
+  }
 
   await user.save();
 

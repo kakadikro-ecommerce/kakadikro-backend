@@ -103,7 +103,7 @@ export const getMyOrders = async (userId, query = {}) => {
     ensureValidObjectId(userId, "user");
 
     const { page, limit, skip } = normalizePagination(query);
-    const filter = { user: userId };
+    const filter = { user: userId, isDeleted: false };
 
     const [orders, total] = await Promise.all([
       attachOrderRelations(
@@ -126,7 +126,14 @@ export const getMyOrders = async (userId, query = {}) => {
 export const getAllOrders = async (query = {}) => {
   try {
     const { page, limit, skip } = normalizePagination(query);
+
     const filter = {};
+
+    if (query.isDeleted !== undefined) {
+      filter.isDeleted = query.isDeleted === "true";
+    } else {
+      filter.isDeleted = false;
+    }
 
     if (query.orderStatus) {
       filter.orderStatus = query.orderStatus;
@@ -143,7 +150,10 @@ export const getAllOrders = async (query = {}) => {
 
     const [orders, total] = await Promise.all([
       attachOrderRelations(
-        Order.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit)
+        Order.find(filter)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
       ),
       Order.countDocuments(filter),
     ]);
@@ -164,7 +174,7 @@ export const getOrderById = async (orderId) => {
     ensureValidObjectId(orderId, "order");
 
     const order = ensureFound(
-      await attachOrderRelations(Order.findById(orderId)),
+      await attachOrderRelations(Order.findOne({ _id: orderId, isDeleted: false })),
       "Order not found"
     );
 
@@ -180,7 +190,7 @@ export const trackOrder = async (orderNumber, requester) => {
   try {
     const order = ensureFound(
       await attachOrderRelations(
-        Order.findOne({ orderNumber })
+        Order.findOne({ orderNumber, isDeleted: false })
       ),
       "Order not found"
     );
@@ -200,7 +210,7 @@ export const trackOrder = async (orderNumber, requester) => {
   } catch (error) {
     rethrowOrderServiceError(error, "Failed to fetch order");
   }
-}; 
+};
 
 export const updateMyOrder = async (orderId, userId, payload) => {
   try {
@@ -208,7 +218,7 @@ export const updateMyOrder = async (orderId, userId, payload) => {
     ensureValidObjectId(userId, "user");
 
     const order = ensureFound(
-      await Order.findById(orderId),
+      await Order.findOne({ _id: orderId, isDeleted: false }),
       "Order not found"
     );
 
@@ -247,7 +257,10 @@ export const updateOrderStatus = async (orderId, payload) => {
   try {
     ensureValidObjectId(orderId, "order");
 
-    const order = ensureFound(await Order.findById(orderId), "Order not found");
+    const order = ensureFound(
+      await Order.findOne({ _id: orderId, isDeleted: false }),
+      "Order not found"
+    );
     const inventoryAdjustments = [];
     const rawTrackingId =
       payload.trackingId ??
@@ -475,7 +488,10 @@ export const cancelOrder = async (orderId, userId) => {
     ensureValidObjectId(orderId, "order");
     ensureValidObjectId(userId, "user");
 
-    const order = ensureFound(await Order.findById(orderId), "Order not found");
+    const order = ensureFound(
+      await Order.findOne({ _id: orderId, isDeleted: false }),
+      "Order not found"
+    );
     const inventoryAdjustments = [];
 
     if (order.user.toString() !== userId) {
@@ -591,5 +607,29 @@ export const cancelOrder = async (orderId, userId) => {
     );
   } catch (error) {
     rethrowOrderServiceError(error, "Failed to cancel order");
+  }
+};
+
+export const deleteOrder = async (orderId, adminUserId) => {
+  try {
+    ensureValidObjectId(orderId, "order");
+    ensureValidObjectId(adminUserId, "user");
+
+    const order = ensureFound(
+      await Order.findOne({ _id: orderId, isDeleted: false }),
+      "Order not found"
+    );
+
+    order.isDeleted = true;
+    order.deletedAt = new Date();
+    order.deletedBy = adminUserId;
+
+    await order.save();
+
+    return normalizeOrderImages(
+      await attachOrderRelations(Order.findById(order._id))
+    );
+  } catch (error) {
+    rethrowOrderServiceError(error, "Failed to delete order");
   }
 };

@@ -1,5 +1,4 @@
 import bcrypt from "bcrypt";
-import generateToken from "../../shared/auth/token.service.js";
 import User from "../user/model.js";
 
 export const registerUser = async (data) => {
@@ -32,10 +31,7 @@ export const registerUser = async (data) => {
     password: hashedPassword,
   });
 
-  const token = generateToken(user);
-
   return {
-    token,
     user: {
       id: user._id,
       name: user.name,
@@ -48,10 +44,10 @@ export const registerUser = async (data) => {
 export const loginUser = async (data) => {
   const { email, password } = data;
 
-  const user = await User.findOne({ email }).select("+password");
+  const user = await User.findOne({ email ,isActive: true }).select("+password");
 
-  if (!user) {
-    const error = new Error("Invalid email or password");
+  if (!user || !user.isActive) {
+    const error = new Error("Invalid email or password or account is deactivated");
     error.statusCode = 401;
     throw error;
   }
@@ -64,10 +60,8 @@ export const loginUser = async (data) => {
     throw error;
   }
 
-  const token = generateToken(user);
-
   return {
-    token,
+    userDocument: user,
     user: {
       id: user._id,
       name: user.name,
@@ -76,3 +70,5 @@ export const loginUser = async (data) => {
     },
   };
 };
+
+export const findUserByIdForRefresh = async (userId) => User.findById(userId);

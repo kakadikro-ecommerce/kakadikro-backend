@@ -5,6 +5,52 @@ import {
   normalizePagination,
 } from "../../shared/utils/pagination.js";
 
+const normalizeArrayResponseField = (value) => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === "string" ? item.trim() : String(item).trim()))
+      .filter(Boolean);
+  }
+
+  if (typeof value !== "string") {
+    return [];
+  }
+
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return [];
+  }
+
+  if (trimmedValue.startsWith("[")) {
+    try {
+      const parsedValue = JSON.parse(trimmedValue);
+
+      if (Array.isArray(parsedValue)) {
+        return parsedValue
+          .map((item) =>
+            typeof item === "string" ? item.trim() : String(item).trim()
+          )
+          .filter(Boolean);
+      }
+    } catch (error) {
+      return [trimmedValue];
+    }
+  }
+
+  return [trimmedValue];
+};
+
+const normalizeProductArrayFields = (product) => {
+  const arrayFields = ["ingredients", "features", "benefits", "tags"];
+
+  for (const field of arrayFields) {
+    product[field] = normalizeArrayResponseField(product[field]);
+  }
+
+  return product;
+};
+
 const buildSlug = (data) => {
   if (data.slug) return data.slug;
   if (!data.name) return undefined;
@@ -34,7 +80,7 @@ export const getAllProducts = async (query) => {
     minPrice,
     maxPrice,
     sortBy = "createdAt",
-    order = "desc",
+    order = "desc"
   } = query;
 
   const filter = { isActive: true };
@@ -89,7 +135,7 @@ export const getAllProductsAdmin = async (query) => {
     order = "desc",
   } = query;
 
-  const filter = {};
+  const filter = { isActive: true };
 
   if (search) {
     filter.name = { $regex: search, $options: "i" };
@@ -142,7 +188,7 @@ export const getProductBySlug = async (slug) => {
     throw error;
   }
 
-  return product;
+  return normalizeProductArrayFields(product);
 };
 
 export const getProductById = async (id) => {
@@ -157,7 +203,7 @@ export const getProductById = async (id) => {
   return product;
 };
 
-export const updateProduct = async (id, data) => {
+export const updateProduct = async (id, data, updatedBy) => {
   const product = await Product.findById(id);
 
   if (!product) {
@@ -172,6 +218,16 @@ export const updateProduct = async (id, data) => {
   }
 
   Object.assign(product, data);
+
+  if (typeof data.isActive === "boolean") {
+    if (data.isActive) {
+      product.deletedAt = null;
+      product.deletedBy = null;
+    } else {
+      product.deletedAt = new Date();
+      product.deletedBy = updatedBy || null;
+    }
+  }
 
   await product.save();
 

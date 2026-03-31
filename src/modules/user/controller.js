@@ -71,7 +71,11 @@ export const getUser = async (req, res, next) => {
 
 export const updateUser = async (req, res, next) => {
   try {
-    const user = await userService.updateUser(req.params.id, req.body);
+    const user = await userService.updateUser(
+      req.params.id,
+      req.body,
+      req.user?.id
+    );
 
     res.status(200).json({
       success: true,
@@ -85,7 +89,7 @@ export const updateUser = async (req, res, next) => {
 
 export const deleteUser = async (req, res, next) => {
   try {
-    const result = await userService.deleteUser(req.params.id);
+    const result = await userService.deleteUser(req.params.id, req.user?.id);
 
     res.status(200).json({
       success: true,

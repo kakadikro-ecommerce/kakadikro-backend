@@ -1,7 +1,5 @@
 import express from "express";
 import * as cartController from "./controller.js";
-import { protect } from "../../middlewares/auth.js";
-import { authorizeRoles } from "../../middlewares/role-access.js";
 import validateRequest from "../../middlewares/validate-request.js";
 import asyncHandler from "../../shared/http/async-handler.js";
 import {
@@ -10,8 +8,6 @@ import {
 } from "./validation.js";
 
 const router = express.Router();
-
-router.use(protect, authorizeRoles("user"));
 
 router.get("/", asyncHandler(cartController.getMyCart));
 

@@ -118,7 +118,8 @@ export const updateProduct = async (req, res, next) => {
 
     const product = await productService.updateProduct(
       req.params.id,
-      validatedPayload
+      validatedPayload,
+      req.user?.id
     );
 
     res.status(200).json({
@@ -141,7 +142,10 @@ export const updateProduct = async (req, res, next) => {
 
 export const deleteProduct = async (req, res, next) => {
   try {
-    const result = await productService.deleteProduct(req.params.id);
+    const result = await productService.deleteProduct(
+      req.params.id,
+      req.user?.id
+    );
 
     res.status(200).json({
       success: true,

@@ -1,18 +1,24 @@
-import jwt from "jsonwebtoken";
 import User from "../modules/user/model.js";
 import {
   unauthorized,
 } from "../shared/errors/http-error.js";
+import { verifyAccessToken } from "../shared/auth/token.service.js";
 
 export const protect = async (req, res, next) => {
   try {
-    const token = req.headers.authorization?.split(" ")[1];
+    const authorizationHeader = req.headers.authorization;
+
+    if (!authorizationHeader?.startsWith("Bearer ")) {
+      throw unauthorized("Unauthorized: token missing");
+    }
+
+    const token = authorizationHeader.split(" ")[1];
 
     if (!token) {
       throw unauthorized("Unauthorized: token missing");
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = verifyAccessToken(token);
     const user = await User.findById(decoded.id);
 
     if (!user) {
@@ -23,7 +29,10 @@ export const protect = async (req, res, next) => {
 
     return next();
   } catch (error) {
-    if (error.name === "JsonWebTokenError" || error.name === "TokenExpiredError") {
+    if (
+      error.name === "JsonWebTokenError" ||
+      error.name === "TokenExpiredError"
+    ) {
       return next(unauthorized("Unauthorized: invalid or expired token"));
     }
 
