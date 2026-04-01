@@ -34,6 +34,8 @@ export const loginUser = async (req, res, next) => {
 
     const accessToken = generateAccessToken(user);
 
+    console.log("NEW LOGIN HIT");
+
     res.status(200).json({
       success: true,
       message: "Login successful",
