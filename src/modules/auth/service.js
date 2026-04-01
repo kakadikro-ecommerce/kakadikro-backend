@@ -70,5 +70,3 @@ export const loginUser = async (data) => {
     },
   };
 };
-
-export const findUserByIdForRefresh = async (userId) => User.findById(userId);

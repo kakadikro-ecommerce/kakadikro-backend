@@ -1,7 +1,6 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
-import cookieParser from "cookie-parser";
 import morgan from "morgan";
 import connectDB from "./config/database.js";
 import routes from "./routes/index.js";
@@ -21,7 +20,6 @@ connectDB();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
 app.use(
   cors({
     origin: function (origin, callback) {
