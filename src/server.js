@@ -11,7 +11,7 @@ dotenv.config();
 
 const app = express();
 const allowedOrigins = (process.env.CLIENT_ORIGIN ||
-  "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173")
+  "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,https://kakadikro-website.vercel.app,https://kakadikro-admin.vercel.app")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
