@@ -261,30 +261,37 @@ export const updateOrderStatus = async (orderId, payload) => {
       await Order.findOne({ _id: orderId, isDeleted: false }),
       "Order not found"
     );
+
     const inventoryAdjustments = [];
+
     const rawTrackingId =
       payload.trackingId ??
       payload.shipment?.trackingId ??
       payload.trackingNumber ??
       "";
+
     const rawCourierName =
       payload.courierName ??
       payload.shipment?.courierName ??
       payload.courier ??
       "";
+
     if (!order.shipment) {
       order.shipment = {};
     }
 
     const hasTrackingId =
       typeof rawTrackingId === "string" && rawTrackingId.trim().length > 0;
+
     const hasCourierName =
       typeof rawCourierName === "string" && rawCourierName.trim().length > 0;
-    const requestedStatus =
-      payload.orderStatus || (hasTrackingId || hasCourierName ? "dispatched" : "");
+
+    const requestedStatus = payload.orderStatus;
+
     const trackingId = hasTrackingId
       ? rawTrackingId.trim()
       : order.shipment?.trackingId || "";
+
     const courierName = hasCourierName
       ? rawCourierName.trim()
       : order.shipment?.courierName || "";
@@ -293,18 +300,18 @@ export const updateOrderStatus = async (orderId, payload) => {
       order.shipment.trackingId = trackingId;
     }
 
-    if (typeof rawCourierName === "string") {
-      order.shipment.courierName = rawCourierName.trim();
+    if (hasCourierName) {
+      order.shipment.courierName = courierName;
     }
 
     if (requestedStatus) {
       const currentStatus = order.orderStatus;
 
-      if (requestedStatus === "confirmed" && currentStatus !== "pending") {
-        throw badRequest("Only pending orders can be confirmed");
-      }
-
       if (requestedStatus === "confirmed") {
+        if (currentStatus !== "pending") {
+          throw badRequest("Only pending orders can be confirmed");
+        }
+
         const productIds = order.items.map((item) => {
           ensureValidObjectId(item.product, "product");
           return item.product.toString();
@@ -314,15 +321,21 @@ export const updateOrderStatus = async (orderId, payload) => {
           _id: { $in: productIds },
           isActive: true,
         });
-        const productMap = new Map(products.map((product) => [product.id, product]));
+
+        const productMap = new Map(
+          products.map((product) => [product.id, product])
+        );
+
         const touchedProducts = new Set();
 
         for (const item of order.items) {
           const productId = item.product.toString();
+
           const product = ensureFound(
             productMap.get(productId),
             `Product not found for id ${productId}`
           );
+
           const variant = findVariantByWeight(product, item.weight);
 
           if (!variant) {
@@ -358,7 +371,6 @@ export const updateOrderStatus = async (orderId, payload) => {
           if (inventoryAdjustments.length > 0) {
             await rollbackInventory(inventoryAdjustments);
           }
-
           throw error;
         }
       }
@@ -378,6 +390,7 @@ export const updateOrderStatus = async (orderId, payload) => {
 
         order.shipment.trackingId = trackingId;
         order.shipment.courierName = courierName;
+
         if (!order.shipment.dispatchedAt) {
           order.shipment.dispatchedAt = new Date();
         }
@@ -388,12 +401,8 @@ export const updateOrderStatus = async (orderId, payload) => {
           throw badRequest("Only dispatched orders can be delivered");
         }
 
-        if (!order.shipment?.trackingId) {
-          throw badRequest("Tracking id is required before delivering an order");
-        }
-
-        if (!order.shipment?.courierName) {
-          throw badRequest("Courier name is required before delivering an order");
+        if (!order.shipment?.trackingId || !order.shipment?.courierName) {
+          throw badRequest("Order must be dispatched before delivery");
         }
       }
 
@@ -411,15 +420,21 @@ export const updateOrderStatus = async (orderId, payload) => {
           const products = await Product.find({
             _id: { $in: productIds },
           });
-          const productMap = new Map(products.map((product) => [product.id, product]));
+
+          const productMap = new Map(
+            products.map((product) => [product.id, product])
+          );
+
           const touchedProducts = new Set();
 
           for (const item of order.items) {
             const productId = item.product.toString();
+
             const product = ensureFound(
               productMap.get(productId),
               `Product not found for id ${productId}`
             );
+
             const variant = findVariantByWeight(product, item.weight);
 
             if (!variant) {
@@ -456,6 +471,7 @@ export const updateOrderStatus = async (orderId, payload) => {
 
     if (payload.paymentStatus) {
       order.paymentStatus = payload.paymentStatus;
+
       if (payload.paymentStatus === "paid" && !order.paidAt) {
         order.paidAt = new Date();
       }
@@ -471,7 +487,6 @@ export const updateOrderStatus = async (orderId, payload) => {
       if (inventoryAdjustments.length > 0) {
         await rollbackInventory(inventoryAdjustments);
       }
-
       throw error;
     }
 
