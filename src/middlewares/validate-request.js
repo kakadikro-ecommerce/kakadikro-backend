@@ -1,6 +1,6 @@
 import { badRequest } from "../shared/errors/http-error.js";
 
-const buildErrorDetails = (details = []) => {
+export const buildErrorDetails = (details = []) => {
   if (!Array.isArray(details)) return [];
 
   return details.map((detail) => ({
@@ -9,7 +9,7 @@ const buildErrorDetails = (details = []) => {
   }));
 };
 
-const validateRequest = (schema, property = "body") => {
+export const validateRequest = (schema, property = "body") => {
   return (req, res, next) => {
     try {
       if (!schema || typeof schema.validate !== "function") {

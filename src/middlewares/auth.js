@@ -1,4 +1,5 @@
-import User from "../modules/user/model.js";
+import User from "../modules/user/user.model.js";
+import Admin from "../modules/admin/admin.model.js";
 import {
   unauthorized,
 } from "../shared/errors/http-error.js";
@@ -19,7 +20,8 @@ export const protect = async (req, res, next) => {
     }
 
     const decoded = verifyAccessToken(token);
-    const user = await User.findById(decoded.id);
+    const model = decoded.role === "user" ? User : Admin;
+    const user = await model.findById(decoded.id);
 
     if (!user) {
       throw unauthorized("Unauthorized: user not found");
