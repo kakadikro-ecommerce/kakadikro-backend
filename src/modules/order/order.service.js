@@ -1,4 +1,5 @@
 import Order from "./order.model.js";
+import User from "../user/user.model.js";
 import Product from "../product/product.model.js";
 import Cart from "../cart/cart.model.js";
 import Payment from "../payment/payment.model.js";
@@ -28,9 +29,19 @@ import {
   rethrowPaymentServiceError,
 } from "../payment/payment.helpers.js";
 
+const STATUS_FLOW = {
+  pending: ["confirmed"],
+  confirmed: ["dispatched"],
+  dispatched: ["delivered"],
+  delivered: [],
+};
+
 export const createOrder = async (userId, payload) => {
   try {
     ensureValidObjectId(userId, "user");
+
+    const user = await User.findById(userId).select("name email");
+
     const cart = ensureFound(
       await Cart.findOne({ user: userId }).populate(
         "items.product",
@@ -76,12 +87,17 @@ export const createOrder = async (userId, payload) => {
     });
 
     const totals = calculateTotals(orderItems, payload);
+
+    const shippingAddress = {
+      ...payload.shippingAddress,
+      fullName: user?.name || payload.shippingAddress.fullName,
+    };
+
     const createdOrder = await Order.create({
       user: userId,
       items: orderItems,
-      shippingAddress: payload.shippingAddress,
+      shippingAddress,
       paymentMethod: payload.paymentMethod || "cod",
-      notes: payload.notes || "",
       ...totals,
     });
 
@@ -239,10 +255,6 @@ export const updateMyOrder = async (orderId, userId, payload) => {
       order.markModified("shippingAddress");
     }
 
-    if (payload.notes !== undefined) {
-      order.notes = payload.notes;
-    }
-
     await order.save();
 
     return normalizeOrderImages(
@@ -306,6 +318,19 @@ export const updateOrderStatus = async (orderId, payload) => {
 
     if (requestedStatus) {
       const currentStatus = order.orderStatus;
+
+      if (currentStatus === requestedStatus) {
+        throw badRequest(`Order is already in '${currentStatus}' status`);
+      }
+
+      const allowedNextStatuses = STATUS_FLOW[currentStatus] || [];
+
+      if (!allowedNextStatuses.includes(requestedStatus)) {
+        throw badRequest(
+          `Cannot change order status from '${currentStatus}' to '${requestedStatus}'`
+        );
+      }
+
 
       if (requestedStatus === "confirmed") {
         if (currentStatus !== "pending") {
@@ -425,10 +450,6 @@ export const updateOrderStatus = async (orderId, payload) => {
       }
     }
 
-    if (payload.adminNote !== undefined) {
-      order.adminNote = payload.adminNote;
-    }
-
     try {
       await order.save();
     } catch (error) {
@@ -523,9 +544,6 @@ export const cancelOrder = async (orderId, userId) => {
         const razorpay = getRazorpayInstance();
         const refund = await razorpay.payments.refund(payment.razorpayPaymentId, {
           amount: Math.round(order.totalAmount * 100),
-          notes: {
-            orderId: order._id.toString(),
-          },
         });
 
         payment.status = "refunded";
@@ -534,7 +552,6 @@ export const cancelOrder = async (orderId, userId) => {
           amount: Number(refund.amount || 0) / 100,
           status: refund.status || "processed",
           refundedAt: new Date(),
-          notes: "Refund processed after order cancellation",
         };
         await payment.save();
 
@@ -545,7 +562,6 @@ export const cancelOrder = async (orderId, userId) => {
           amount: order.totalAmount,
           status: "failed",
           refundedAt: null,
-          notes: error?.message || "Refund failed after order cancellation",
         };
         await payment.save();
         order.paymentStatus = "failed";

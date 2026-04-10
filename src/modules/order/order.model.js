@@ -192,16 +192,6 @@ const orderSchema = new mongoose.Schema(
       min: 0,
       immutable: true,
     },
-    notes: {
-      type: String,
-      trim: true,
-      default: "",
-    },
-    adminNote: {
-      type: String,
-      trim: true,
-      default: "",
-    },
     placedAt: {
       type: Date,
       default: Date.now,

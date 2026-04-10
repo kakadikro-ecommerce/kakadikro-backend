@@ -38,15 +38,23 @@ export const updateOrderStatusValidation = Joi.object({
     .trim()
     .valid(...PAYMENT_STATUSES)
     .optional(),
-  adminNote: Joi.string().trim().allow("").optional(),
   trackingId: Joi.string().trim().allow("").optional(),
   trackingNumber: Joi.string().trim().allow("").optional(),
-  courierName: Joi.string().trim().allow("").optional(),
-  courier: Joi.string().trim().allow("").optional(),
+  courierName: Joi.string()
+  .trim()
+  .pattern(/^[A-Za-z\s]+$/)
+  .message("Courier name must contain only letters")
+  .allow("")
+  .optional(),
   shipment: Joi.object({
-    trackingId: Joi.string().trim().allow("").optional(),
-    courierName: Joi.string().trim().allow("").optional(),
-  }).optional(),
+  trackingId: Joi.string().trim().allow("").optional(),
+  courierName: Joi.string()
+    .trim()
+    .pattern(/^[A-Za-z\s]+$/)
+    .message("Courier name must contain only letters")
+    .allow("")
+    .optional(),
+}).optional(),
 }).or(
   "orderStatus",
   "paymentStatus",
