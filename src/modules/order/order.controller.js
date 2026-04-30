@@ -105,7 +105,7 @@ export const updateOrderStatus = async (req, res, next) => {
   } catch (error) {
     return next(error);
   }
-}; 
+};
 
 export const updateOrderActiveStatus = async (req, res, next) => {
   try {
@@ -138,3 +138,16 @@ export const cancelOrder = async (req, res, next) => {
   }
 };
 
+export const generateOrderLabel = async (req, res, next) => {
+  try {
+    const labelUrl = await orderService.generateOrderLabel(req.params.id);
+
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename=order_${req.params.id}_label.pdf`,
+    });
+    res.send(labelUrl);
+  } catch (error) {
+    return next(error);
+  }
+};

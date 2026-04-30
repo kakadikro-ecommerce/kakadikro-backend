@@ -3,6 +3,8 @@ import User from "../user/user.model.js";
 import Product from "../product/product.model.js";
 import Cart from "../cart/cart.model.js";
 import Payment from "../payment/payment.model.js";
+import puppeteer from "puppeteer";
+import { buildOrderLabelHtml } from "./order-label.template.js";
 import {
   ensureFound,
   ensureValidObjectId,
@@ -607,5 +609,47 @@ export const updateOrderActiveStatus = async (orderId, payload) => {
   } catch (error) {
     rethrowOrderServiceError(error, "Failed to update order active status");
   }
-};
+}; 
 
+export const generateOrderLabel = async (orderId) => {
+  try {
+    ensureValidObjectId(orderId, "order");
+
+    const order = ensureFound(
+      await attachOrderRelations(
+        Order.findById(orderId)
+      ),
+      "Order not found"
+    );
+
+    const data = order.toObject ? order.toObject() : order;
+
+    const html = buildOrderLabelHtml(data);
+
+    const browser = await puppeteer.launch({
+      headless: "new",
+    });
+
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: "domcontentloaded" });
+
+      return await page.pdf({
+        width: "6in",
+        height: "4in",
+        margin: {
+          top: "0",
+          right: "0",
+          bottom: "0",
+          left: "0",
+        },
+        preferCSSPageSize: true,
+        printBackground: true,
+      });
+    } finally {
+      await browser.close();
+    }
+  } catch (error) {
+    rethrowOrderServiceError(error, "Failed to generate label");
+  }
+};

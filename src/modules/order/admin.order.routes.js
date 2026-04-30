@@ -31,4 +31,6 @@ router.put(
   asyncHandler(orderController.updateOrderActiveStatus)
 );
 
+router.get("/label/:id", protect, authorizeRoles("admin", "super_admin"), asyncHandler(orderController.generateOrderLabel));
+
 export default router;
