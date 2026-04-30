@@ -609,7 +609,7 @@ export const updateOrderActiveStatus = async (orderId, payload) => {
   } catch (error) {
     rethrowOrderServiceError(error, "Failed to update order active status");
   }
-}; 
+};
 
 export const generateOrderLabel = async (orderId) => {
   try {
@@ -628,6 +628,7 @@ export const generateOrderLabel = async (orderId) => {
 
     const browser = await puppeteer.launch({
       headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
     try {
