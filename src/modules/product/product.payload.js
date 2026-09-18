@@ -52,7 +52,7 @@ export const parseArrayField = (value, fieldName) => {
 
 export const parseMultipartPayload = (body) => {
   const parsedBody = { ...body };
-  const jsonFields = ["variants", "existingImages"];
+  const jsonFields = ["variants", "existingImages", "specifications"];
 
   for (const field of jsonFields) {
     if (
@@ -116,8 +116,14 @@ export const prepareProductPayload = async (req, res) => {
   const isMultipartRequest = req.is("multipart/form-data");
 
   if (!isMultipartRequest) {
+    const payload = { ...req.body };
+
+    if (Array.isArray(payload.images)) {
+      payload.images = payload.images.map(normalizeImageRecordForStorage);
+    }
+
     return {
-      payload: { ...req.body },
+      payload,
       uploadedFiles: [],
     };
   }

@@ -106,7 +106,7 @@ export const createOrder = async (userId, payload) => {
     cart.items = [];
     await cart.save();
 
-    return normalizeOrderImages(
+    return await normalizeOrderImages(
       await attachOrderRelations(Order.findById(createdOrder._id))
     );
   } catch (error) {
@@ -130,8 +130,10 @@ export const getMyOrders = async (userId, query = {}) => {
 
     return {
       pagination: buildPaginationMeta({ total, page, limit }),
-      orders: orders.map((order) =>
-        normalizeOrderImages(order.toObject ? order.toObject() : order)
+      orders: await Promise.all(
+        orders.map((order) =>
+          normalizeOrderImages(order.toObject ? order.toObject() : order)
+        )
       ),
     };
   } catch (error) {
@@ -176,8 +178,10 @@ export const getAllOrders = async (query = {}) => {
 
     return {
       pagination: buildPaginationMeta({ total, page, limit }),
-      orders: orders.map((order) =>
-        normalizeOrderImages(order.toObject ? order.toObject() : order)
+      orders: await Promise.all(
+        orders.map((order) =>
+          normalizeOrderImages(order.toObject ? order.toObject() : order)
+        )
       ),
     };
   } catch (error) {
@@ -194,7 +198,7 @@ export const getOrderById = async (orderId) => {
       "Order not found"
     );
 
-    return normalizeOrderImages(
+    return await normalizeOrderImages(
       order.toObject ? order.toObject() : order
     );
   } catch (error) {
@@ -224,7 +228,7 @@ export const trackOrder = async (orderId, requester) => {
       };
     }
 
-    return normalizeOrderImages(orderData);
+    return await normalizeOrderImages(orderData);
   } catch (error) {
     rethrowOrderServiceError(error, "Failed to fetch order");
   }
@@ -259,7 +263,7 @@ export const updateMyOrder = async (orderId, userId, payload) => {
 
     await order.save();
 
-    return normalizeOrderImages(
+    return await normalizeOrderImages(
       await attachOrderRelations(Order.findById(order._id))
     );
   } catch (error) {
@@ -373,7 +377,7 @@ export const updateOrderStatus = async (orderId, payload) => {
 
           if (variant.stock < item.quantity) {
             throw badRequest(
-              `Insufficient stock for '${product.name}' (${variant.weight}). Available stock is ${variant.stock}.`
+              `Insufficient stock for '${product.name}' (${item.weight}). Available stock is ${variant.stock}.`
             );
           }
 
@@ -461,7 +465,7 @@ export const updateOrderStatus = async (orderId, payload) => {
       throw error;
     }
 
-    return normalizeOrderImages(
+    return await normalizeOrderImages(
       await attachOrderRelations(Order.findById(order._id))
     );
   } catch (error) {
@@ -582,7 +586,7 @@ export const cancelOrder = async (orderId, userId) => {
       throw error;
     }
 
-    return normalizeOrderImages(
+    return await normalizeOrderImages(
       await attachOrderRelations(Order.findById(order._id))
     );
   } catch (error) {
@@ -603,7 +607,7 @@ export const updateOrderActiveStatus = async (orderId, payload) => {
     order.isActive = payload.isActive;
     await order.save();
 
-    return normalizeOrderImages(
+    return await normalizeOrderImages(
       await attachOrderRelations(Order.findById(order._id))
     );
   } catch (error) {

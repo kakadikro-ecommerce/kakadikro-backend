@@ -86,12 +86,15 @@ COOKIE_SAME_SITE=lax
 AWS_ACCESS_KEY_ID=your_aws_access_key_id
 AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
 AWS_REGION=ap-south-1
-AWS_S3_BUCKET_NAME=your_s3_bucket_name
+AWS_S3_BUCKET_NAME=kakadikroproduct
+S3_PRESIGNED_URL_EXPIRES_IN=3600
 
 RAZORPAY_KEY_ID=your_razorpay_key_id
 RAZORPAY_KEY_SECRET=your_razorpay_key_secret
 
-S3_BASE_URL=https://your-bucket.s3.ap-south-1.amazonaws.com
+# Optional. Used only to extract object keys from legacy full S3/CloudFront URLs
+# stored in the database. Responses now use backend-generated presigned GET URLs.
+S3_BASE_URL=https://kakadikroproduct.s3.ap-south-1.amazonaws.com
 CLOUDFRONT_BASE_URL=https://your-cloudfront-domain
 ```
 
@@ -99,7 +102,9 @@ Notes:
 
 - `CLIENT_ORIGIN` can contain a comma-separated list of allowed frontend origins.
 - `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` are required for online payment APIs.
-- `S3_BASE_URL` and `CLOUDFRONT_BASE_URL` are used when mapping stored image keys to response URLs.
+- Product media is stored in private S3 as object keys. Product, cart, and order APIs return temporary presigned GET URLs.
+- `S3_BASE_URL` and `CLOUDFRONT_BASE_URL` are optional compatibility helpers for documents that still store full URLs instead of keys.
+- Do not commit AWS credentials. Local deploys can use `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`. Production can use an IAM role instead.
 
 ## Available Scripts
 
@@ -297,4 +302,6 @@ The application uses these main MongoDB collections:
 - MongoDB connects through `src/config/database.js`.
 - Route groups are composed in `src/routes/index.js`.
 - Role access is enforced with `protect` and `authorizeRoles`.
-- Product media is stored in S3 under generated `uploads/<uuid>` keys.
+- Product media is stored in private S3 under generated `uploads/<uuid>` keys. API responses replace those keys with temporary presigned GET URLs.
+- Keep Block Public Access enabled on `kakadikroproduct`. Do not add a public `s3:GetObject` bucket policy.
+- Browser access to presigned object URLs needs S3 CORS limited to the admin panel and website origins, with `GET` and `HEAD` only. Do not use `AllowedOrigins: ["*"]`.

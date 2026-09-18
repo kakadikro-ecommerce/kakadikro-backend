@@ -4,16 +4,50 @@ import {
   createHttpError,
   ensureFound,
 } from "../../shared/errors/http-error.js";
-import { getImageUrl } from "../../shared/utils/image.js";
+import { extractImageKey, isFullUrl } from "../../shared/utils/image.js";
+import { getPresignedGetUrls } from "../../shared/upload/presign.js";
+
+const getAttributeValue = (attributes, key) => {
+  if (!attributes) {
+    return undefined;
+  }
+
+  if (typeof attributes.get === "function") {
+    return attributes.get(key);
+  }
+
+  return attributes[key];
+};
+
+export const getVariantKey = (variant) =>
+  variant?.name ||
+  variant?.weight ||
+  getAttributeValue(variant?.attributes, "weight") ||
+  "";
 
 export const findVariantByWeight = (product, weight) =>
-  product.variants.find((variant) => variant.weight === weight);
+  product.variants.find((variant) => {
+    if (variant.name === weight) {
+      return true;
+    }
+
+    if (variant.weight === weight) {
+      return true;
+    }
+
+    return getAttributeValue(variant.attributes, "weight") === weight;
+  });
 
 export const attachCartRelations = (query) =>
-  query.populate("items.product", "name slug category images variants isActive");
+  query.populate("items.product", "name slug category productType images variants isActive");
 
-export const buildCartSummary = (cart) => {
-  const items = cart.items.map((item) => {
+export const buildCartSummary = async (cart) => {
+  const imageKeys = cart.items.map((item) =>
+    extractImageKey(item.product?.images?.[0]?.url || item.productImage || "")
+  );
+  const imageUrlMap = await getPresignedGetUrls(imageKeys);
+
+  const items = cart.items.map((item, index) => {
     const product = item.product;
 
     const variant = product?.variants
@@ -22,13 +56,21 @@ export const buildCartSummary = (cart) => {
 
     const unitPrice = variant?.price ?? item.unitPrice ?? 0;
     const totalPrice = unitPrice * item.quantity;
+    const imageKey = imageKeys[index];
+    let productImage = "";
+
+    if (imageKey) {
+      productImage = isFullUrl(imageKey)
+        ? imageKey
+        : imageUrlMap.get(imageKey) || "";
+    }
 
     return {
       _id: item._id,
       product: product?._id || item.product,
       name: product?.name || item.name,
       slug: product?.slug || item.slug || "",
-      productImage: getImageUrl(product?.images?.[0]?.url || item.productImage || "") || "",
+      productImage,
       category: product?.category || "",
       weight: item.weight,
       quantity: item.quantity,
@@ -57,8 +99,8 @@ export const buildCartItemSnapshot = (product, variant, quantity) => ({
   product: product._id,
   name: product.name,
   slug: product.slug,
-  productImage: product.images?.[0]?.url || "",
-  weight: variant.weight,
+  productImage: extractImageKey(product.images?.[0]?.url || "") || "",
+  weight: getVariantKey(variant),
   quantity,
   unitPrice: variant.price,
 });

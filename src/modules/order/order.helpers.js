@@ -1,16 +1,45 @@
 import AppError from "../../shared/errors/app-error.js";
 import { badRequest, createHttpError, forbidden } from "../../shared/errors/http-error.js";
-import { getImageUrl } from "../../shared/utils/image.js";
+import { extractImageKey, isFullUrl } from "../../shared/utils/image.js";
+import { getPresignedGetUrls } from "../../shared/upload/presign.js";
+
+const getAttributeValue = (attributes, key) => {
+  if (!attributes) {
+    return undefined;
+  }
+
+  if (typeof attributes.get === "function") {
+    return attributes.get(key);
+  }
+
+  return attributes[key];
+};
+
+export const getVariantKey = (variant) =>
+  variant?.name ||
+  variant?.weight ||
+  getAttributeValue(variant?.attributes, "weight") ||
+  "";
 
 export const findVariantByWeight = (product, weight) =>
-  product.variants.find((variant) => variant.weight === weight);
+  product.variants.find((variant) => {
+    if (variant.name === weight) {
+      return true;
+    }
+
+    if (variant.weight === weight) {
+      return true;
+    }
+
+    return getAttributeValue(variant.attributes, "weight") === weight;
+  });
 
 export const buildOrderItem = (product, variant, quantity) => ({
   product: product._id,
   name: product.name,
   slug: product.slug,
-  productImage: product.images?.[0]?.url || "",
-  weight: variant.weight,
+  productImage: extractImageKey(product.images?.[0]?.url || "") || "",
+  weight: getVariantKey(variant),
   quantity,
   unitPrice: variant.price,
   totalPrice: variant.price * quantity,
@@ -51,19 +80,37 @@ export const rollbackInventory = async (inventoryAdjustments) => {
 export const attachOrderRelations = (query) =>
   query
     .populate("user", "name email role")
-    .populate("items.product", "name slug category images variants");
+    .populate("items.product", "name slug category productType images variants");
 
-export const normalizeOrderImages = (order) => {
-  if (!order?.items || !Array.isArray(order.items)) {
-    return order;
+export const normalizeOrderImages = async (order) => {
+  const orderData = order?.toObject ? order.toObject() : order;
+
+  if (!orderData?.items || !Array.isArray(orderData.items)) {
+    return orderData;
   }
 
-  order.items = order.items.map((item) => ({
-    ...item,
-    productImage: getImageUrl(item.product?.images?.[0]?.url || item.productImage || "") || "",
-  }));
+  const imageKeys = orderData.items.map((item) =>
+    extractImageKey(item.product?.images?.[0]?.url || item.productImage || "")
+  );
+  const imageUrlMap = await getPresignedGetUrls(imageKeys);
 
-  return order;
+  orderData.items = orderData.items.map((item, index) => {
+    const imageKey = imageKeys[index];
+    let productImage = "";
+
+    if (imageKey) {
+      productImage = isFullUrl(imageKey)
+        ? imageKey
+        : imageUrlMap.get(imageKey) || "";
+    }
+
+    return {
+      ...item,
+      productImage,
+    };
+  });
+
+  return orderData;
 };
 
 export const ensureOrderAccess = (order, requester) => {

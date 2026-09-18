@@ -5,6 +5,8 @@ import { authorizeRoles } from "../../middlewares/role-access.js";
 
 const router = express.Router();
 
+router.get("/product-types", protect, authorizeRoles("admin", "super_admin"), productController.getProductTypes);
+
 router.get("/", protect, authorizeRoles("admin", "super_admin"), productController.getAllProductsAdmin);
 
 router.get("/:id", protect, authorizeRoles("admin", "super_admin"), productController.getProductById);

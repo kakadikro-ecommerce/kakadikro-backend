@@ -1,5 +1,6 @@
 import * as productService from "./product.service.js";
 import { deleteFilesFromS3 } from "../../shared/upload/service.js";
+import { PRODUCT_TYPES } from "./productType.catalog.js";
 import {
   prepareProductPayload,
   validatePayload,
@@ -146,6 +147,36 @@ export const updateProductStatus = async (req, res, next) => {
 
       success: true,
       message: "Product status updated successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getProductTypes = async (_req, res, next) => {
+  try {
+    res.status(200).json({
+      success: true,
+      message: "Product types fetched successfully",
+      data: PRODUCT_TYPES,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getRelatedProducts = async (req, res, next) => {
+  try {
+    const { limit } = req.query;
+    const products = await productService.getRelatedProducts(
+      req.params.slug,
+      limit
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Related products fetched successfully",
+      data: products,
     });
   } catch (error) {
     next(error);

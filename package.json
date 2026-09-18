@@ -6,8 +6,10 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "start": "node src/server.js -p 5000",
+    "dev": "nodemon src/server.js -p 5000",
+    "migrate:product-types": "node scripts/migrate-product-types.js",
+    "migrate:product-types:dry": "node scripts/migrate-product-types.js --dry-run"
   },
   "keywords": [],
   "author": "",
@@ -15,6 +17,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.883.0",
     "@aws-sdk/lib-storage": "^3.883.0",
+    "@aws-sdk/s3-request-presigner": "^3.1135.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",

@@ -1,18 +1,61 @@
 import mongoose from "mongoose";
-import { mapImageRecordToResponse } from "../../shared/utils/image.js";
 
-const transformProductImages = (_, ret) => {
-  if (Array.isArray(ret.images)) {
-    ret.images = ret.images.map(mapImageRecordToResponse);
+const mapToPlainObject = (value) => {
+  if (!value) {
+    return {};
+  }
+
+  if (value instanceof Map) {
+    return Object.fromEntries(value.entries());
+  }
+
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return { ...value };
+  }
+
+  return {};
+};
+
+const transformProductResponse = (_, ret) => {
+  ret.specifications = mapToPlainObject(ret.specifications);
+
+  if (!ret.productType) {
+    ret.productType = "GROCERY";
+  }
+
+  if (Array.isArray(ret.variants)) {
+    ret.variants = ret.variants.map((variant) => {
+      const attributes = mapToPlainObject(variant.attributes);
+      const weight =
+        attributes.weight ||
+        (typeof variant.weight === "string" ? variant.weight : undefined);
+      const name = variant.name || weight || "";
+
+      if (weight && !attributes.weight) {
+        attributes.weight = weight;
+      }
+
+      return {
+        ...variant,
+        name,
+        attributes,
+        // Temporary compatibility for clients that still read variants.weight
+        ...(weight ? { weight } : {}),
+      };
+    });
   }
 
   return ret;
 };
 
 const variantSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    trim: true
+  },
+  // Legacy field kept so unmigrated grocery documents still hydrate correctly
   weight: {
     type: String,
-    required: true,
     trim: true
   },
   price: {
@@ -28,6 +71,11 @@ const variantSchema = new mongoose.Schema({
     type: Number,
     default: 0,
     min: 0
+  },
+  attributes: {
+    type: Map,
+    of: String,
+    default: {}
   },
 }, { _id: false });
 
@@ -51,13 +99,18 @@ const productSchema = new mongoose.Schema({
     type: String
   },
 
-  category: {
+  productType: {
     type: String,
-    required: true
+    enum: ["GROCERY", "ELECTRONICS"],
+    required: true,
+    default: "GROCERY",
+    index: true
   },
 
-  brand: {
-    type: String
+  category: {
+    type: String,
+    required: true,
+    index: true
   },
 
   images: [
@@ -70,6 +123,12 @@ const productSchema = new mongoose.Schema({
   variants: {
     type: [variantSchema],
     required: true
+  },
+
+  specifications: {
+    type: Map,
+    of: String,
+    default: {}
   },
 
   ingredients: [String],
@@ -101,8 +160,46 @@ const productSchema = new mongoose.Schema({
 
 }, {
   timestamps: true,
-  toJSON: { virtuals: true, transform: transformProductImages },
-  toObject: { virtuals: true, transform: transformProductImages }
+  toJSON: { virtuals: true, transform: transformProductResponse },
+  toObject: { virtuals: true, transform: transformProductResponse }
+});
+
+productSchema.pre("validate", function normalizeLegacyProductFields() {
+  if (!this.productType) {
+    this.productType = "GROCERY";
+  }
+
+  if (this.specifications == null) {
+    this.specifications = new Map();
+  }
+
+  if (Array.isArray(this.variants)) {
+    this.variants = this.variants.map((variant) => {
+      const attributes =
+        variant.attributes instanceof Map
+          ? Object.fromEntries(variant.attributes.entries())
+          : { ...(variant.attributes || {}) };
+
+      const weight =
+        (typeof variant.weight === "string" && variant.weight.trim()) ||
+        attributes.weight ||
+        "";
+      const name =
+        (typeof variant.name === "string" && variant.name.trim()) || weight;
+
+      if (weight && !attributes.weight) {
+        attributes.weight = weight;
+      }
+
+      variant.name = name;
+      variant.attributes = attributes;
+      if (weight) {
+        variant.weight = weight;
+      }
+
+      return variant;
+    });
+  }
 });
 
 productSchema.virtual("cartItems", {

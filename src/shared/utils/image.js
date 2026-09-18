@@ -1,13 +1,71 @@
 import "dotenv/config";
+import { getPresignedGetUrl, getPresignedGetUrls } from "../upload/presign.js";
 
 const normalizeBaseUrl = (value = "") => value.trim().replace(/\/+$/, "");
 
 const S3_BASE_URL = normalizeBaseUrl(process.env.S3_BASE_URL || "");
-const CLOUDFRONT_BASE_URL = normalizeBaseUrl(process.env.CLOUDFRONT_BASE_URL || "");
+const CLOUDFRONT_BASE_URL = normalizeBaseUrl(
+  process.env.CLOUDFRONT_BASE_URL || ""
+);
 
 const removeLeadingSlash = (value = "") => value.replace(/^\/+/, "");
 
+const getHostname = (value) => {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+};
+
 export const isFullUrl = (value = "") => /^https?:\/\//i.test(value);
+
+const getKnownStorageHosts = () => {
+  const hosts = new Set();
+  const bucket = (process.env.AWS_S3_BUCKET_NAME || "").toLowerCase();
+  const region = process.env.AWS_REGION || "ap-south-1";
+
+  const s3BaseHost = getHostname(S3_BASE_URL);
+  const cloudFrontHost = getHostname(CLOUDFRONT_BASE_URL);
+
+  if (s3BaseHost) {
+    hosts.add(s3BaseHost);
+  }
+
+  if (cloudFrontHost) {
+    hosts.add(cloudFrontHost);
+  }
+
+  if (bucket) {
+    hosts.add(`${bucket}.s3.${region}.amazonaws.com`);
+    hosts.add(`${bucket}.s3.amazonaws.com`);
+    hosts.add(`${bucket}.s3-${region}.amazonaws.com`);
+  }
+
+  return hosts;
+};
+
+const extractKeyFromUrl = (value) => {
+  const parsed = new URL(value);
+  const host = parsed.hostname.toLowerCase();
+  const pathname = removeLeadingSlash(decodeURIComponent(parsed.pathname || ""));
+  const bucket = process.env.AWS_S3_BUCKET_NAME || "";
+  const knownHosts = getKnownStorageHosts();
+
+  if (knownHosts.has(host)) {
+    return pathname;
+  }
+
+  if (
+    bucket &&
+    host.includes("amazonaws.com") &&
+    pathname.startsWith(`${bucket}/`)
+  ) {
+    return pathname.slice(bucket.length + 1);
+  }
+
+  return null;
+};
 
 export const extractImageKey = (value) => {
   if (!value || typeof value !== "string") {
@@ -20,43 +78,34 @@ export const extractImageKey = (value) => {
     return null;
   }
 
-  if (S3_BASE_URL && trimmedValue.startsWith(S3_BASE_URL)) {
-    return removeLeadingSlash(trimmedValue.slice(S3_BASE_URL.length));
+  if (!isFullUrl(trimmedValue)) {
+    return removeLeadingSlash(trimmedValue.split(/[?#]/)[0]);
   }
 
-  if (CLOUDFRONT_BASE_URL && trimmedValue.startsWith(CLOUDFRONT_BASE_URL)) {
-    return removeLeadingSlash(trimmedValue.slice(CLOUDFRONT_BASE_URL.length));
+  try {
+    const key = extractKeyFromUrl(trimmedValue);
+    return key || trimmedValue;
+  } catch {
+    return removeLeadingSlash(trimmedValue.split(/[?#]/)[0]);
   }
-
-  return isFullUrl(trimmedValue) ? trimmedValue : removeLeadingSlash(trimmedValue);
 };
 
-export const getImageUrl = (key) => {
+export const getImageUrl = async (key) => {
   if (!key || typeof key !== "string") {
     return null;
   }
 
-  const trimmedKey = key.trim();
+  const extractedKey = extractImageKey(key);
 
-  if (!trimmedKey) {
+  if (!extractedKey) {
     return null;
   }
 
-  if (S3_BASE_URL && trimmedKey.startsWith(S3_BASE_URL)) {
-    return trimmedKey.replace(S3_BASE_URL, CLOUDFRONT_BASE_URL);
+  if (isFullUrl(extractedKey)) {
+    return extractedKey;
   }
 
-  if (CLOUDFRONT_BASE_URL && trimmedKey.startsWith(CLOUDFRONT_BASE_URL)) {
-    return trimmedKey;
-  }
-
-  if (isFullUrl(trimmedKey)) {
-    return trimmedKey;
-  }
-
-  return CLOUDFRONT_BASE_URL
-    ? `${CLOUDFRONT_BASE_URL}/${removeLeadingSlash(trimmedKey)}`
-    : trimmedKey;
+  return getPresignedGetUrl(extractedKey);
 };
 
 export const normalizeImageRecordForStorage = (image = {}) => ({
@@ -64,7 +113,74 @@ export const normalizeImageRecordForStorage = (image = {}) => ({
   url: extractImageKey(image.url),
 });
 
-export const mapImageRecordToResponse = (image = {}) => ({
+export const mapImageRecordToResponse = async (image = {}) => ({
   ...image,
-  url: getImageUrl(image.url),
+  url: await getImageUrl(image.url),
 });
+
+const toPlainProduct = (product) => {
+  if (!product) {
+    return product;
+  }
+
+  if (typeof product.toObject === "function") {
+    return product.toObject();
+  }
+
+  return { ...product };
+};
+
+export const attachPresignedUrlsToProducts = async (products = []) => {
+  const plainProducts = products.map(toPlainProduct);
+  const keys = [];
+
+  for (const product of plainProducts) {
+    if (!Array.isArray(product?.images)) {
+      continue;
+    }
+
+    for (const image of product.images) {
+      const key = extractImageKey(image?.url);
+
+      if (key && !isFullUrl(key)) {
+        keys.push(key);
+      }
+    }
+  }
+
+  const urlMap = await getPresignedGetUrls(keys);
+
+  for (const product of plainProducts) {
+    if (!Array.isArray(product?.images)) {
+      continue;
+    }
+
+    product.images = product.images.map((image) => {
+      const key = extractImageKey(image?.url);
+
+      if (!key) {
+        return { ...image, url: null };
+      }
+
+      if (isFullUrl(key)) {
+        return { ...image, url: key };
+      }
+
+      return {
+        ...image,
+        url: urlMap.get(key) || null,
+      };
+    });
+  }
+
+  return plainProducts;
+};
+
+export const attachPresignedUrlsToProduct = async (product) => {
+  if (!product) {
+    return product;
+  }
+
+  const [serialized] = await attachPresignedUrlsToProducts([product]);
+  return serialized;
+};

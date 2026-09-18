@@ -4,7 +4,7 @@ import adminRoutes from "./admin.routes.js";
 
 const router = express.Router();
 
-router.use("/v1/user", userRoutes);
-router.use("/v1/admin", adminRoutes);
+router.use("/user", userRoutes);
+router.use("/admin", adminRoutes);
 
 export default router;

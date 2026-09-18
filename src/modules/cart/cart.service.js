@@ -13,6 +13,7 @@ import {
   findVariantByWeight,
   rethrowCartServiceError,
 } from "./cart.helpers.js";
+import { extractImageKey } from "../../shared/utils/image.js";
 
 const getOrCreateCart = async (userId) => {
   let cart = await Cart.findOne({ user: userId });
@@ -31,7 +32,7 @@ export const getMyCart = async (userId) => {
     const cart = await getOrCreateCart(userId);
     const populatedCart = await attachCartRelations(Cart.findById(cart._id));
 
-    return buildCartSummary(populatedCart);
+    return await buildCartSummary(populatedCart);
   } catch (error) {
     rethrowCartServiceError(error, "Failed to fetch cart");
   }
@@ -73,7 +74,8 @@ export const addItemToCart = async (userId, payload) => {
       existingItem.unitPrice = variant.price;
       existingItem.name = product.name;
       existingItem.slug = product.slug || "";
-      existingItem.productImage = product.images?.[0]?.url || "";
+      existingItem.productImage =
+        extractImageKey(product.images?.[0]?.url || "") || "";
     } else {
       cart.items.push(buildCartItemSnapshot(product, variant, payload.quantity));
     }
@@ -81,7 +83,7 @@ export const addItemToCart = async (userId, payload) => {
     await cart.save();
 
     const populatedCart = await attachCartRelations(Cart.findById(cart._id));
-    return buildCartSummary(populatedCart);
+    return await buildCartSummary(populatedCart);
   } catch (error) {
     rethrowCartServiceError(error, "Failed to add item to cart");
   }
@@ -114,12 +116,12 @@ export const updateCartItemQuantity = async (userId, itemId, payload) => {
     item.unitPrice = variant.price;
     item.name = product.name;
     item.slug = product.slug || "";
-    item.productImage = product.images?.[0]?.url || "";
+    item.productImage = extractImageKey(product.images?.[0]?.url || "") || "";
 
     await cart.save();
 
     const populatedCart = await attachCartRelations(Cart.findById(cart._id));
-    return buildCartSummary(populatedCart);
+    return await buildCartSummary(populatedCart);
   } catch (error) {
     rethrowCartServiceError(error, "Failed to update cart item");
   }
@@ -137,7 +139,7 @@ export const removeCartItem = async (userId, itemId) => {
     await cart.save();
 
     const populatedCart = await attachCartRelations(Cart.findById(cart._id));
-    return buildCartSummary(populatedCart);
+    return await buildCartSummary(populatedCart);
   } catch (error) {
     rethrowCartServiceError(error, "Failed to remove cart item");
   }
@@ -152,7 +154,7 @@ export const clearCart = async (userId) => {
     await cart.save();
 
     const populatedCart = await attachCartRelations(Cart.findById(cart._id));
-    return buildCartSummary(populatedCart);
+    return await buildCartSummary(populatedCart);
   } catch (error) {
     rethrowCartServiceError(error, "Failed to clear cart");
   }

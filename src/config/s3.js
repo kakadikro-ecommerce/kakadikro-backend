@@ -14,20 +14,50 @@ const fileExtensionsByType = new Map([
   ["video/mp4", ".mp4"],
 ]);
 
-export const s3 = new S3Client({
-  region: process.env.AWS_REGION || "ap-south-1",
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
-  },
-});
+const buildS3ClientConfig = () => {
+  const config = {
+    region: process.env.AWS_REGION || "ap-south-1",
+  };
+
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+
+  if (accessKeyId && secretAccessKey) {
+    config.credentials = {
+      accessKeyId,
+      secretAccessKey,
+    };
+  }
+
+  return config;
+};
+
+export const s3 = new S3Client(buildS3ClientConfig());
+
+export const getS3BucketName = () => process.env.AWS_S3_BUCKET_NAME || "";
+
+export const getPresignedUrlExpiresIn = () => {
+  const parsed = Number.parseInt(
+    process.env.S3_PRESIGNED_URL_EXPIRES_IN || "3600",
+    10
+  );
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 3600;
+  }
+
+  return Math.min(parsed, 604800);
+};
 
 export const validateS3Env = () => {
-  const requiredEnvVars = [
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
-    "AWS_S3_BUCKET_NAME",
-  ];
+  const requiredEnvVars = ["AWS_S3_BUCKET_NAME"];
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+
+  // Local/.env deploys use explicit keys. IAM-role deploys may omit both.
+  if (accessKeyId || secretAccessKey) {
+    requiredEnvVars.push("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY");
+  }
 
   const missingEnvVars = requiredEnvVars.filter(
     (variableName) => !process.env[variableName]
