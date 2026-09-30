@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Order from "./order.model.js";
 import User from "../user/user.model.js";
 import Product from "../product/product.model.js";
@@ -38,6 +39,34 @@ const STATUS_FLOW = {
   delivered: [],
 };
 
+const generateOrderNumber = () => {
+  const now = new Date();
+  const stamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("");
+  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `KD-${stamp}-${suffix}`;
+};
+
+const isMongoObjectId = (value) =>
+  mongoose.Types.ObjectId.isValid(value) &&
+  String(new mongoose.Types.ObjectId(value)) === String(value);
+
+const buildOrderLookupFilter = (orderIdOrNumber) => {
+  const value = String(orderIdOrNumber || "").trim();
+  if (!value) {
+    return null;
+  }
+
+  if (isMongoObjectId(value)) {
+    return { _id: value, isActive: true };
+  }
+
+  return { orderNumber: value, isActive: true };
+};
+
 export const createOrder = async (userId, payload) => {
   try {
     ensureValidObjectId(userId, "user");
@@ -54,6 +83,24 @@ export const createOrder = async (userId, payload) => {
 
     if (!Array.isArray(cart.items) || cart.items.length === 0) {
       throw badRequest("Cart is empty");
+    }
+
+    const paymentMethod = payload.paymentMethod || "cod";
+
+    if (isOnlineOrderPayment(paymentMethod)) {
+      const unpaidOnlineOrder = await Order.findOne({
+        user: userId,
+        paymentMethod: { $ne: "cod" },
+        paymentStatus: { $in: ["pending", "failed"] },
+        orderStatus: { $ne: "cancelled" },
+        isActive: true,
+      }).sort({ createdAt: -1 });
+
+      if (unpaidOnlineOrder) {
+        throw badRequest(
+          "You already have an unpaid order. Please complete payment or cancel it before placing a new one."
+        );
+      }
     }
 
     const productIds = cart.items.map((item) => {
@@ -97,12 +144,15 @@ export const createOrder = async (userId, payload) => {
 
     const createdOrder = await Order.create({
       user: userId,
+      orderNumber: generateOrderNumber(),
       items: orderItems,
       shippingAddress,
-      paymentMethod: payload.paymentMethod || "cod",
+      paymentMethod,
       ...totals,
     });
 
+    // Snapshot is stored on the order — clear cart for both COD and online
+    // so checkout totals cannot diverge from the order being paid.
     cart.items = [];
     await cart.save();
 
@@ -191,10 +241,13 @@ export const getAllOrders = async (query = {}) => {
 
 export const getOrderById = async (orderId) => {
   try {
-    ensureValidObjectId(orderId, "order");
+    const filter = buildOrderLookupFilter(orderId);
+    if (!filter) {
+      throw badRequest("Order id is required");
+    }
 
     const order = ensureFound(
-      await attachOrderRelations(Order.findOne({ _id: orderId, isActive: true })),
+      await attachOrderRelations(Order.findOne(filter)),
       "Order not found"
     );
 
@@ -208,12 +261,13 @@ export const getOrderById = async (orderId) => {
 
 export const trackOrder = async (orderId, requester) => {
   try {
-    ensureValidObjectId(orderId, "order");
+    const filter = buildOrderLookupFilter(orderId);
+    if (!filter) {
+      throw badRequest("Order id is required");
+    }
 
     const order = ensureFound(
-      await attachOrderRelations(
-        Order.findOne({ _id: orderId, isActive: true })
-      ),
+      await attachOrderRelations(Order.findOne(filter)),
       "Order not found"
     );
 

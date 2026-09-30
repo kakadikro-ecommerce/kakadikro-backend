@@ -6,7 +6,8 @@ import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import AppError from "../shared/errors/app-error.js";
 
-const allowedMimeTypes = ["image/jpeg","image/webp", "image/png", "video/mp4"];
+const imageMimeTypes = ["image/jpeg", "image/png", "image/webp"];
+const videoMimeTypes = ["video/mp4"];
 const fileExtensionsByType = new Map([
   ["image/jpeg", ".jpg"],
   ["image/png", ".png"],
@@ -65,7 +66,7 @@ export const validateS3Env = () => {
 
   if (missingEnvVars.length > 0) {
     throw new AppError(
-      `Missing required AWS environment variables: ${missingEnvVars.join(", ")}`,
+      "File storage is not configured correctly. Please contact support.",
       500
     );
   }
@@ -81,16 +82,35 @@ const createFileKey = (file) => {
 
 const fileFilter = (req, file, cb) => {
   try {
-    if (!allowedMimeTypes.includes(file.mimetype)) {
-      return cb(
-        new AppError(
-          "Invalid file type. Only JPEG, PNG, and MP4 files are allowed",
-          400
-        )
-      );
+    if (file.fieldname === "images") {
+      if (!imageMimeTypes.includes(file.mimetype)) {
+        return cb(
+          new AppError(
+            "Invalid file type. Only JPEG, PNG, and WebP images are allowed",
+            400
+          )
+        );
+      }
+
+      return cb(null, true);
     }
 
-    return cb(null, true);
+    if (file.fieldname === "video") {
+      if (!videoMimeTypes.includes(file.mimetype)) {
+        return cb(
+          new AppError("Invalid file type. Only MP4 video is allowed", 400)
+        );
+      }
+
+      return cb(null, true);
+    }
+
+    return cb(
+      new AppError(
+        "Upload images on the images field and the video on the video field.",
+        400
+      )
+    );
   } catch (error) {
     return cb(error);
   }
@@ -120,7 +140,8 @@ export const upload = multer({
     },
   }),
   limits: {
-    fileSize: 5 * 1024 * 1024,
+    // Video ceiling. Images are rejected above 5MB after the upload.
+    fileSize: 50 * 1024 * 1024,
   },
   fileFilter,
 });

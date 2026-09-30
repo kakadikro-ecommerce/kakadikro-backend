@@ -8,15 +8,15 @@ export const authorizeRoles = (...roles) => {
   return (req, res, next) => {
     try {
       if (!req.user) {
-        throw unauthorized("Unauthorized: User not logged in");
+        throw unauthorized("Please log in to continue");
       }
 
       if (!req.user.role) {
-        throw badRequest("User role not defined");
+        throw badRequest("Your account role is not set. Please contact support.");
       }
 
       if (!roles.includes(req.user.role)) {
-        throw forbidden(`Access denied: Role '${req.user.role}' is not allowed`);
+        throw forbidden("You do not have permission to perform this action");
       }
 
       return next();

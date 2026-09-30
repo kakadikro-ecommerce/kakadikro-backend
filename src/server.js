@@ -7,7 +7,7 @@ import routes from "./routes/index.js";
 import notFoundHandler from "./middlewares/not-found.js";
 import errorHandler from "./middlewares/error-handler.js";
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const app = express();
 const normalizeOrigin = (value = "") => value.trim().replace(/\/+$/, "");
@@ -102,8 +102,20 @@ app.use((req, res, next) => {
 });
 
 app.use(cors(corsOptions));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
+// Razorpay webhooks need the raw body for HMAC signature verification.
+// This must be registered before express.json().
+app.use(
+  "/api/payments/webhooks/razorpay",
+  express.raw({ type: "application/json" })
+);
+
+// JSON and URL-encoded bodies only. Multipart product files are limited by
+// Multer: up to 9 images at 5MB each, and one MP4 video at 50MB.
+// Reverse proxies (Nginx) must also raise client_max_body_size — see README.
+const bodyLimit = process.env.REQUEST_BODY_LIMIT || "30mb";
+app.use(express.json({ limit: bodyLimit }));
+app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
 app.use(morgan("dev"));
 
 app.use("/api", routes);

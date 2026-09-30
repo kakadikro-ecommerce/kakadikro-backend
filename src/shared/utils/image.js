@@ -130,47 +130,64 @@ const toPlainProduct = (product) => {
   return { ...product };
 };
 
+const collectSignableKey = (value, keys) => {
+  const key = extractImageKey(value);
+
+  if (key && !isFullUrl(key)) {
+    keys.push(key);
+  }
+};
+
+const mapMediaUrl = (value, urlMap) => {
+  const key = extractImageKey(value);
+
+  if (!key) {
+    return null;
+  }
+
+  if (isFullUrl(key)) {
+    return key;
+  }
+
+  return urlMap.get(key) || null;
+};
+
+const mapVideoToResponse = (video, urlMap) => {
+  if (!video || typeof video !== "object" || !video.url) {
+    return null;
+  }
+
+  return {
+    ...video,
+    url: mapMediaUrl(video.url, urlMap),
+  };
+};
+
 export const attachPresignedUrlsToProducts = async (products = []) => {
   const plainProducts = products.map(toPlainProduct);
   const keys = [];
 
   for (const product of plainProducts) {
-    if (!Array.isArray(product?.images)) {
-      continue;
-    }
-
-    for (const image of product.images) {
-      const key = extractImageKey(image?.url);
-
-      if (key && !isFullUrl(key)) {
-        keys.push(key);
+    if (Array.isArray(product?.images)) {
+      for (const image of product.images) {
+        collectSignableKey(image?.url, keys);
       }
     }
+
+    collectSignableKey(product?.video?.url, keys);
   }
 
   const urlMap = await getPresignedGetUrls(keys);
 
   for (const product of plainProducts) {
-    if (!Array.isArray(product?.images)) {
-      continue;
+    if (Array.isArray(product?.images)) {
+      product.images = product.images.map((image) => ({
+        ...image,
+        url: mapMediaUrl(image?.url, urlMap),
+      }));
     }
 
-    product.images = product.images.map((image) => {
-      const key = extractImageKey(image?.url);
-
-      if (!key) {
-        return { ...image, url: null };
-      }
-
-      if (isFullUrl(key)) {
-        return { ...image, url: key };
-      }
-
-      return {
-        ...image,
-        url: urlMap.get(key) || null,
-      };
-    });
+    product.video = mapVideoToResponse(product.video, urlMap);
   }
 
   return plainProducts;

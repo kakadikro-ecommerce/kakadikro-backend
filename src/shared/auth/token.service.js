@@ -5,13 +5,13 @@ const ACCESS_TOKEN_EXPIRES_IN = process.env.JWT_ACCESS_EXPIRE || "7d";
 export const generateAccessToken = (user) => {
   try {
     if (!user || !user._id || !user.role) {
-      const error = new Error("Invalid user data for access token generation");
+      const error = new Error("Unable to create session. Please try again.");
       error.statusCode = 400;
       throw error;
     }
 
     if (!process.env.JWT_SECRET) {
-      const error = new Error("JWT_SECRET is not defined");
+      const error = new Error("Something went wrong. Please try again.");
       error.statusCode = 500;
       throw error;
     }
@@ -33,7 +33,7 @@ export const generateAccessToken = (user) => {
       stack: error.stack,
     });
 
-    const customError = new Error("Failed to generate access token");
+    const customError = new Error("Unable to create session. Please try again.");
     customError.statusCode = error.statusCode || 500;
 
     throw customError;

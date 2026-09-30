@@ -58,6 +58,34 @@ export const uploadMultipleFilesFromRequest = async (
   return req.files || [];
 };
 
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+export const uploadProductMediaFromRequest = async (req, res) => {
+  validateS3Env();
+  await runUploadMiddleware(
+    req,
+    res,
+    upload.fields([
+      { name: "images", maxCount: 9 },
+      { name: "video", maxCount: 1 },
+    ])
+  );
+
+  const images = req.files?.images || [];
+  const video = req.files?.video?.[0] || null;
+  const uploadedFiles = [...images, ...(video ? [video] : [])];
+  const hasOversizedImage = images.some(
+    (file) => Number(file.size) > MAX_IMAGE_BYTES
+  );
+
+  if (hasOversizedImage) {
+    await deleteFilesFromS3(uploadedFiles.map((file) => file.key));
+    throw new AppError("Each image must be 5MB or smaller", 400);
+  }
+
+  return { images, video };
+};
+
 export const deleteFilesFromS3 = async (keys = []) => {
   const validKeys = keys.filter(Boolean);
 

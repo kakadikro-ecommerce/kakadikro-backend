@@ -112,14 +112,48 @@ export const updateProduct = async (req, res, next) => {
     const preparedRequest = await prepareProductPayload(req, res);
     uploadedFiles = preparedRequest.uploadedFiles;
 
+    const existingProduct = await productService.getProductById(req.params.id);
+    const originalPayload = preparedRequest.payload;
+
+    // Merge existing type-specific fields for validation only, so partial
+    // updates still enforce grocery/electronics rules without forcing
+    // the admin to resend every field.
+    const productType =
+      originalPayload.productType || existingProduct.productType || "GROCERY";
+    const existingSpecs =
+      existingProduct.specifications instanceof Map
+        ? Object.fromEntries(existingProduct.specifications)
+        : existingProduct.specifications || {};
+
+    const payloadForValidation = {
+      ...originalPayload,
+      productType,
+      ingredients:
+        originalPayload.ingredients !== undefined
+          ? originalPayload.ingredients
+          : existingProduct.ingredients || [],
+      specifications:
+        originalPayload.specifications !== undefined
+          ? originalPayload.specifications
+          : existingSpecs,
+    };
+
     const validatedPayload = validatePayload(
       updateProductValidation,
-      preparedRequest.payload
+      payloadForValidation
     );
+
+    const updateData = { ...validatedPayload };
+    if (originalPayload.ingredients === undefined) {
+      delete updateData.ingredients;
+    }
+    if (originalPayload.specifications === undefined) {
+      delete updateData.specifications;
+    }
 
     const product = await productService.updateProduct(
       req.params.id,
-      validatedPayload
+      updateData
     );
 
     res.status(200).json({

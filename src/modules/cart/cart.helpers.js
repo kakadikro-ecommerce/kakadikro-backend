@@ -43,12 +43,14 @@ export const attachCartRelations = (query) =>
 
 export const buildCartSummary = async (cart) => {
   const imageKeys = cart.items.map((item) =>
-    extractImageKey(item.product?.images?.[0]?.url || item.productImage || "")
+    // Prefer the cart-line snapshot so line items stay tied to what was added.
+    extractImageKey(item.productImage || item.product?.images?.[0]?.url || "")
   );
   const imageUrlMap = await getPresignedGetUrls(imageKeys);
 
   const items = cart.items.map((item, index) => {
     const product = item.product;
+    const productId = product?._id || item.product;
 
     const variant = product?.variants
       ? findVariantByWeight(product, item.weight)
@@ -67,9 +69,11 @@ export const buildCartSummary = async (cart) => {
 
     return {
       _id: item._id,
-      product: product?._id || item.product,
-      name: product?.name || item.name,
-      slug: product?.slug || item.slug || "",
+      product: productId,
+      productId,
+      // Keep snapshot identity for display; still use live price/stock when available.
+      name: item.name || product?.name || "Cart item",
+      slug: item.slug || product?.slug || "",
       productImage,
       category: product?.category || "",
       weight: item.weight,
@@ -88,6 +92,7 @@ export const buildCartSummary = async (cart) => {
     _id: cart._id,
     user: cart.user,
     totalItems,
+    subtotal: subtotalAmount,
     subtotalAmount,
     items,
     createdAt: cart.createdAt,

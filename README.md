@@ -18,7 +18,7 @@ Backend API for the KakaDikro ecommerce application. This service provides user 
 ```text
 src/
   assets/                 Static project assets
-  config/                 Database and AWS S3 configuration
+  config/                 Database, mail, and AWS S3 configuration
   middlewares/            Auth, role access, validation, error, and 404 handlers
   modules/
     admin/                Admin auth, profile, user management, and admin model
@@ -30,7 +30,7 @@ src/
     review/               Product review APIs and review model
     user/                 User auth, profile, and user model
   routes/                 API route composition for user and admin route groups
-  shared/                 Reusable auth, error, HTTP, upload, utility, and validation helpers
+  shared/                 Reusable auth, error, HTTP, mail, upload, utility, and validation helpers
   server.js               Express app bootstrap
 ```
 
@@ -92,6 +92,15 @@ S3_PRESIGNED_URL_EXPIRES_IN=3600
 RAZORPAY_KEY_ID=your_razorpay_key_id
 RAZORPAY_KEY_SECRET=your_razorpay_key_secret
 
+SMTP_HOST=smtp.example.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=contact@kakadikro.com
+SMTP_PASS=your_smtp_password
+NEXT_PUBLIC_YOUTUBE_URL=https://www.youtube.com/@Kaka_Dikro
+NEXT_PUBLIC_INSTAGRAM_URL=https://www.instagram.com/kaka.dikro
+NEXT_PUBLIC_FACEBOOK_URL=https://www.facebook.com/share/1BRUZeNZr6/
+
 # Optional. Used only to extract object keys from legacy full S3/CloudFront URLs
 # stored in the database. Responses now use backend-generated presigned GET URLs.
 S3_BASE_URL=https://kakadikroproduct.s3.ap-south-1.amazonaws.com
@@ -102,6 +111,8 @@ Notes:
 
 - `CLIENT_ORIGIN` can contain a comma-separated list of allowed frontend origins.
 - `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` are required for online payment APIs.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, and `SMTP_PASS` are required for Contact Us emails. The authenticated sender is `SMTP_USER`. Do not expose these values to the frontend.
+- `NEXT_PUBLIC_FACEBOOK_URL`, `NEXT_PUBLIC_INSTAGRAM_URL`, and `NEXT_PUBLIC_YOUTUBE_URL` are the social links used in email footers.
 - Product media is stored in private S3 as object keys. Product, cart, and order APIs return temporary presigned GET URLs.
 - `S3_BASE_URL` and `CLOUDFRONT_BASE_URL` are optional compatibility helpers for documents that still store full URLs instead of keys.
 - Do not commit AWS credentials. Local deploys can use `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`. Production can use an IAM role instead.
@@ -214,8 +225,22 @@ POST /api/v1/user/payments/verification
 ### Contact
 
 ```text
-POST /api/v1/user/contacts
+POST /api/user/contacts
 ```
+
+Request body:
+
+```json
+{
+  "name": "Asha Patel",
+  "email": "asha@example.com",
+  "phone": "9876543210",
+  "subject": "Bulk masala order",
+  "message": "I would like a price list for the spice range."
+}
+```
+
+`phone` and `subject` are optional. A successful submission stores the inquiry, emails `contact@kakadikro.com`, and sends a separate confirmation to the customer. The customer address is used only as `replyTo` on the business notification.
 
 ## Admin APIs
 
@@ -246,7 +271,18 @@ PUT  /api/v1/admin/products/:id
 PUT  /api/v1/admin/products/status/:id
 ```
 
-Product create/update supports JSON payloads and `multipart/form-data`. For multipart uploads, use the `images` field. Up to 5 files are supported, with JPEG, PNG, WebP, and MP4 accepted by the upload configuration.
+Product create/update supports JSON payloads and `multipart/form-data`. Images and video are both optional. The client chooses how many images to send, from 0 to 9.
+
+Multipart fields:
+
+- `images`: 0 to 9 files. JPEG, PNG, or WebP. Each file must be 5MB or smaller.
+- `imageAltTexts`: optional alt text aligned with the uploaded images, same as before.
+- `existingImages`: on update, JSON array of images to keep. Images are replaced only when this field is sent or new image files are uploaded. The stored list becomes `existingImages` plus the newly uploaded images.
+- `video`: 0 or 1 file. MP4 only. Maximum 50MB. A new file replaces the stored video.
+- `videoAltText`: optional alt text for the uploaded video.
+- `existingVideo`: on update, when no new video file is sent. Send a JSON object `{ "url", "altText" }` to keep that video, or `null` / `""` to remove it. Omit the field to leave the stored video unchanged.
+
+JSON create/update accepts `images` and an optional `video` object `{ "url", "altText" }`. `video: null` clears it. The server stores S3 object keys, not public URLs.
 
 ### Orders
 
@@ -302,6 +338,31 @@ The application uses these main MongoDB collections:
 - MongoDB connects through `src/config/database.js`.
 - Route groups are composed in `src/routes/index.js`.
 - Role access is enforced with `protect` and `authorizeRoles`.
-- Product media is stored in private S3 under generated `uploads/<uuid>` keys. API responses replace those keys with temporary presigned GET URLs.
+- Product media is stored in private S3 under generated `uploads/<uuid>.<ext>` keys. API responses replace those keys with temporary presigned GET URLs. CloudFront is not used.
 - Keep Block Public Access enabled on `kakadikroproduct`. Do not add a public `s3:GetObject` bucket policy.
 - Browser access to presigned object URLs needs S3 CORS limited to the admin panel and website origins, with `GET` and `HEAD` only. Do not use `AllowedOrigins: ["*"]`.
+- For in-browser video seeking, that CORS rule must also allow the `Range` request header and expose `Accept-Ranges`, `Content-Range`, and `Content-Length`.
+
+## Upload size / 413 errors
+
+Product create/update accepts **0 to 9 images at 5MB each** and **0 or 1 MP4 video at 50MB** (`multipart/form-data`). `REQUEST_BODY_LIMIT` (default `30mb`) applies to JSON and URL-encoded bodies only. It does not cap multipart file uploads. Multer enforces the file limits.
+
+If the browser shows **CORS** + **413 Request Entity Too Large** against `api.kakadikro.com`, the reverse proxy (usually Nginx) rejected the body **before** Node ran — so CORS headers were never added. Fix Nginx (or your load balancer) and reload.
+
+`deploy/nginx-api.snippet.conf` is a reference snippet. This repo does not change the live EC2 Nginx config. Copy these directives into the `server { }` block that proxies to this API, then reload Nginx on the instance:
+
+```nginx
+client_max_body_size 120M;
+client_body_timeout 300s;
+proxy_read_timeout 300s;
+proxy_send_timeout 300s;
+proxy_request_buffering off;
+```
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Each image must be 5MB or smaller. The video must be 50MB or smaller.
+
+When developing the admin panel locally, set `VITE_API_BASE_URL=http://localhost:5000/api` (exact name — `VITE_API_BASE_URL_LOCAL` is ignored by Vite).

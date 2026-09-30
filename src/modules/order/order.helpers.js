@@ -90,7 +90,9 @@ export const normalizeOrderImages = async (order) => {
   }
 
   const imageKeys = orderData.items.map((item) =>
-    extractImageKey(item.product?.images?.[0]?.url || item.productImage || "")
+    // Prefer the immutable order snapshot so catalog image edits cannot
+    // make historical orders show a different product's photo.
+    extractImageKey(item.productImage || item.product?.images?.[0]?.url || "")
   );
   const imageUrlMap = await getPresignedGetUrls(imageKeys);
 

@@ -10,13 +10,13 @@ export const protect = async (req, res, next) => {
     const authorizationHeader = req.headers.authorization;
 
     if (!authorizationHeader?.startsWith("Bearer ")) {
-      throw unauthorized("Unauthorized: token missing");
+      throw unauthorized("Please log in to continue");
     }
 
     const token = authorizationHeader.split(" ")[1];
 
     if (!token) {
-      throw unauthorized("Unauthorized: token missing");
+      throw unauthorized("Please log in to continue");
     }
 
     const decoded = verifyAccessToken(token);
@@ -24,7 +24,7 @@ export const protect = async (req, res, next) => {
     const user = await model.findById(decoded.id);
 
     if (!user) {
-      throw unauthorized("Unauthorized: user not found");
+      throw unauthorized("Your session is no longer valid. Please log in again.");
     }
 
     req.user = user;
@@ -35,13 +35,13 @@ export const protect = async (req, res, next) => {
       error.name === "JsonWebTokenError" ||
       error.name === "TokenExpiredError"
     ) {
-      return next(unauthorized("Unauthorized: invalid or expired token"));
+      return next(unauthorized("Your session has expired. Please log in again."));
     }
 
     if (error.statusCode) {
       return next(error);
     }
 
-    return next(unauthorized("Unauthorized: invalid or expired token"));
+    return next(unauthorized("Your session has expired. Please log in again."));
   }
 };

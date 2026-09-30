@@ -11,8 +11,20 @@ import { authorizeRoles } from "../../middlewares/role-access.js";
 
 const router = express.Router();
 
-router.post("/orders", protect, authorizeRoles("user"), validateRequest(createPaymentOrderValidation), asyncHandler(paymentController.createPaymentOrder));
+router.post(
+  "/orders",
+  protect,
+  authorizeRoles("user"),
+  validateRequest(createPaymentOrderValidation),
+  asyncHandler(paymentController.createPaymentOrder)
+);
 
-router.post("/verification", protect, authorizeRoles("user"), validateRequest(verifyPaymentValidation), asyncHandler(paymentController.verifyPayment));
+router.post(
+  "/verification",
+  protect,
+  authorizeRoles("user"),
+  validateRequest(verifyPaymentValidation),
+  asyncHandler(paymentController.verifyPayment)
+);
 
 export default router;

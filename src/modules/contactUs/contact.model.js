@@ -20,8 +20,14 @@ const contactSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
-      required: true,
       trim: true,
+      default: "",
+    },
+    subject: {
+      type: String,
+      trim: true,
+      default: "",
+      maxlength: 150,
     },
     message: {
       type: String,

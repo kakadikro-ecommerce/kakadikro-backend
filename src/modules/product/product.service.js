@@ -4,9 +4,11 @@ import {
   buildPaginationMeta,
   normalizePagination,
 } from "../../shared/utils/pagination.js";
+import { deleteFilesFromS3 } from "../../shared/upload/service.js";
 import {
   attachPresignedUrlsToProduct,
   attachPresignedUrlsToProducts,
+  extractImageKey,
   normalizeImageRecordForStorage,
 } from "../../shared/utils/image.js";
 
@@ -136,7 +138,47 @@ const prepareProductData = (data) => {
     productData.images = productData.images.map(normalizeImageRecordForStorage);
   }
 
+  if (productData.video === null || productData.video === "") {
+    productData.video = null;
+  } else if (
+    productData.video &&
+    typeof productData.video === "object" &&
+    !Array.isArray(productData.video)
+  ) {
+    productData.video = normalizeImageRecordForStorage(productData.video);
+  }
+
   return productData;
+};
+
+const collectImageKeys = (images = []) =>
+  images.map((image) => extractImageKey(image?.url)).filter(Boolean);
+
+const collectReplacedMediaKeys = (product, productData) => {
+  const keysToDelete = [];
+
+  if (Array.isArray(productData.images)) {
+    const nextImageKeys = new Set(collectImageKeys(productData.images));
+
+    for (const key of collectImageKeys(product.images)) {
+      if (!nextImageKeys.has(key)) {
+        keysToDelete.push(key);
+      }
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(productData, "video")) {
+    const previousVideoKey = extractImageKey(product.video?.url);
+    const nextVideoKey = productData.video
+      ? extractImageKey(productData.video.url)
+      : null;
+
+    if (previousVideoKey && previousVideoKey !== nextVideoKey) {
+      keysToDelete.push(previousVideoKey);
+    }
+  }
+
+  return keysToDelete;
 };
 
 const escapeRegex = (text) =>
@@ -315,9 +357,23 @@ export const updateProduct = async (id, data) => {
     productData.slug = slug;
   }
 
+  const replacedMediaKeys = collectReplacedMediaKeys(product, productData);
+
   Object.assign(product, productData);
 
+  if (Object.prototype.hasOwnProperty.call(productData, "video")) {
+    product.video = productData.video;
+  }
+
   await product.save();
+
+  if (replacedMediaKeys.length > 0) {
+    try {
+      await deleteFilesFromS3(replacedMediaKeys);
+    } catch (error) {
+      console.error("Failed to delete replaced product media from S3", error);
+    }
+  }
 
   return attachPresignedUrlsToProduct(product);
 };

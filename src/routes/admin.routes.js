@@ -3,8 +3,9 @@ import adminProfileRoutes from "../modules/admin/profile.routes.js";
 import adminOrderRoutes from "../modules/order/admin.order.routes.js";
 import adminContactRoutes from "../modules/contactUs/admin.contact.routes.js";
 import adminProductRoutes from "../modules/product/admin.product.routes.js";
-import adminAuthRoutes from "../modules/admin/auth.routes.js"
+import adminAuthRoutes from "../modules/admin/auth.routes.js";
 import adminUserRoutes from "../modules/admin/users.routes.js";
+import adminPaymentRoutes from "../modules/payment/admin.payment.routes.js";
 
 const router = express.Router();
 
@@ -14,5 +15,6 @@ router.use("/products", adminProductRoutes);
 router.use("/orders", adminOrderRoutes);
 router.use("/contacts", adminContactRoutes);
 router.use("/users", adminUserRoutes);
+router.use("/payments", adminPaymentRoutes);
 
 export default router;

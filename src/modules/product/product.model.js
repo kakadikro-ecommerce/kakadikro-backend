@@ -120,6 +120,17 @@ const productSchema = new mongoose.Schema({
     }
   ],
 
+  video: {
+    type: new mongoose.Schema(
+      {
+        url: String,
+        altText: String
+      },
+      { _id: false }
+    ),
+    default: null
+  },
+
   variants: {
     type: [variantSchema],
     required: true

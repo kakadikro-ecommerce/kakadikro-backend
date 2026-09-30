@@ -4,7 +4,7 @@ export const buildErrorDetails = (details = []) => {
   if (!Array.isArray(details)) return [];
 
   return details.map((detail) => ({
-    message: detail.message || "Invalid value",
+    message: String(detail.message || "Invalid value").replace(/["']/g, ""),
     path: detail.path ? detail.path.join(".") : "",
   }));
 };
@@ -26,7 +26,10 @@ export const validateRequest = (schema, property = "body") => {
       });
 
       if (error) {
-        throw badRequest("Validation failed", buildErrorDetails(error.details));
+        throw badRequest(
+          "Please check the form and fix the highlighted fields",
+          buildErrorDetails(error.details)
+        );
       }
 
       req[property] = value;

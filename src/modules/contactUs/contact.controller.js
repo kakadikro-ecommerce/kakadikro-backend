@@ -17,7 +17,7 @@ export const createContact = async (req, res, next) => {
 
     res.status(201).json({
       success: true,
-      message: "Message sent successfully",
+      message: "We've received your message and will get back to you shortly",
       data: contact,
     });
   } catch (error) {

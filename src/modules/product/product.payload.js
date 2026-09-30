@@ -1,4 +1,4 @@
-import { uploadMultipleFilesFromRequest } from "../../shared/upload/service.js";
+import { uploadProductMediaFromRequest } from "../../shared/upload/service.js";
 import { normalizeImageRecordForStorage } from "../../shared/utils/image.js";
 
 export const parseArrayField = (value, fieldName) => {
@@ -23,7 +23,7 @@ export const parseArrayField = (value, fieldName) => {
       const parsedValue = JSON.parse(trimmedValue);
 
       if (!Array.isArray(parsedValue)) {
-        const error = new Error(`Invalid JSON array format in ${fieldName}`);
+      const error = new Error(`Please provide ${fieldName} in a valid format`);
         error.statusCode = 400;
         throw error;
       }
@@ -38,7 +38,7 @@ export const parseArrayField = (value, fieldName) => {
         throw error;
       }
 
-      const err = new Error(`Invalid JSON format in ${fieldName}`);
+      const err = new Error(`Please provide ${fieldName} in a valid format`);
       err.statusCode = 400;
       throw err;
     }
@@ -52,7 +52,12 @@ export const parseArrayField = (value, fieldName) => {
 
 export const parseMultipartPayload = (body) => {
   const parsedBody = { ...body };
-  const jsonFields = ["variants", "existingImages", "specifications"];
+  const jsonFields = [
+    "variants",
+    "existingImages",
+    "existingVideo",
+    "specifications",
+  ];
 
   for (const field of jsonFields) {
     if (
@@ -62,7 +67,7 @@ export const parseMultipartPayload = (body) => {
       try {
         parsedBody[field] = JSON.parse(parsedBody[field]);
       } catch (error) {
-        const err = new Error(`Invalid JSON format in ${field}`);
+        const err = new Error(`Please provide ${field} in a valid format`);
         err.statusCode = 400;
         throw err;
       }
@@ -112,6 +117,47 @@ export const buildUploadedImages = (files, altTexts) => {
   }));
 };
 
+const normalizeVideoForStorage = (video) => {
+  if (video === null || video === "") {
+    return null;
+  }
+
+  if (!video || typeof video !== "object" || Array.isArray(video)) {
+    const error = new Error("Please provide video in a valid format");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return normalizeImageRecordForStorage(video);
+};
+
+const resolveExistingVideo = (parsedBody) => {
+  if (!Object.prototype.hasOwnProperty.call(parsedBody, "existingVideo")) {
+    return { provided: false, video: undefined };
+  }
+
+  const existingVideo = parsedBody.existingVideo;
+
+  if (existingVideo === null || existingVideo === "") {
+    return { provided: true, video: null };
+  }
+
+  if (
+    !existingVideo ||
+    typeof existingVideo !== "object" ||
+    Array.isArray(existingVideo)
+  ) {
+    const error = new Error("Please provide existingVideo in a valid format");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return {
+    provided: true,
+    video: normalizeImageRecordForStorage(existingVideo),
+  };
+};
+
 export const prepareProductPayload = async (req, res) => {
   const isMultipartRequest = req.is("multipart/form-data");
 
@@ -122,30 +168,36 @@ export const prepareProductPayload = async (req, res) => {
       payload.images = payload.images.map(normalizeImageRecordForStorage);
     }
 
+    if (Object.prototype.hasOwnProperty.call(payload, "video")) {
+      payload.video = normalizeVideoForStorage(payload.video);
+    }
+
     return {
       payload,
       uploadedFiles: [],
     };
   }
 
-  const uploadedFiles = await uploadMultipleFilesFromRequest(
-    req,
-    res,
-    "images",
-    5,
-    { required: false }
-  );
+  const { images: imageFiles, video: videoFile } =
+    await uploadProductMediaFromRequest(req, res);
+  const uploadedFiles = [...imageFiles, ...(videoFile ? [videoFile] : [])];
   const parsedBody = parseMultipartPayload(req.body);
   const altTexts = normalizeAltTexts(parsedBody.imageAltTexts);
   const existingImages = Array.isArray(parsedBody.existingImages)
     ? parsedBody.existingImages.map(normalizeImageRecordForStorage)
     : [];
-  const uploadedImages = buildUploadedImages(uploadedFiles, altTexts);
+  const uploadedImages = buildUploadedImages(imageFiles, altTexts);
   const hasExplicitImages =
     uploadedImages.length > 0 || parsedBody.existingImages !== undefined;
+  const existingVideo = resolveExistingVideo(parsedBody);
+  const videoAltText =
+    typeof parsedBody.videoAltText === "string" ? parsedBody.videoAltText : "";
 
   delete parsedBody.imageAltTexts;
   delete parsedBody.existingImages;
+  delete parsedBody.existingVideo;
+  delete parsedBody.videoAltText;
+  delete parsedBody.video;
 
   const payload = {
     ...parsedBody,
@@ -153,6 +205,15 @@ export const prepareProductPayload = async (req, res) => {
 
   if (hasExplicitImages) {
     payload.images = [...existingImages, ...uploadedImages];
+  }
+
+  if (videoFile) {
+    payload.video = {
+      url: videoFile.key,
+      altText: videoAltText,
+    };
+  } else if (existingVideo.provided) {
+    payload.video = existingVideo.video;
   }
 
   return {
@@ -168,10 +229,12 @@ export const validatePayload = (schema, payload) => {
   });
 
   if (error) {
-    const validationError = new Error("Validation failed");
+    const validationError = new Error(
+      "Please check the form and fix the highlighted fields"
+    );
     validationError.statusCode = 400;
     validationError.details = error.details.map((detail) => ({
-      message: detail.message,
+      message: detail.message.replace(/["]/g, ""),
       path: detail.path.join("."),
     }));
     throw validationError;
