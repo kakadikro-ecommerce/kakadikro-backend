@@ -76,6 +76,27 @@ const markOrderFailed = async (order) => {
   return order;
 };
 
+export const recordCodPaymentReceived = async (order) => {
+  const existing = await Payment.findOne({ orderId: order._id });
+
+  if (existing) {
+    if (existing.status !== "success" && existing.status !== "refunded") {
+      existing.status = "success";
+      existing.amount = Number(order.totalAmount);
+      await existing.save();
+    }
+
+    return existing;
+  }
+
+  return Payment.create({
+    orderId: order._id,
+    userId: order.user,
+    amount: Number(order.totalAmount),
+    status: "success",
+  });
+};
+
 const findPaymentByRazorpayOrderId = async (razorpayOrderId) => {
   if (!razorpayOrderId) {
     return null;
@@ -256,10 +277,9 @@ export const createPaymentOrder = async (userId, payload) => {
     const paymentOrder = await razorpay.orders.create({
       amount: amountInPaise,
       currency: "INR",
-      receipt: String(order.orderNumber || order._id).slice(0, 40),
+      receipt: String(order._id).slice(0, 40),
       notes: {
         orderId: order._id.toString(),
-        orderNumber: order.orderNumber || "",
         userId,
       },
     });
@@ -294,7 +314,6 @@ export const createPaymentOrder = async (userId, payload) => {
       payment,
       order: {
         id: order._id.toString(),
-        orderNumber: order.orderNumber || "",
         totalAmount: amountInRupees,
       },
       razorpay: {
@@ -378,25 +397,47 @@ export const getAllPaymentsAdmin = async (query = {}) => {
       filter.status = String(query.status).trim().toLowerCase();
     }
 
-    const [payments, total] = await Promise.all([
+    const [payments, total, summaryAgg] = await Promise.all([
       Payment.find(filter)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(Number(limit))
         .populate({
           path: "orderId",
-          select: "orderNumber totalAmount paymentMethod paymentStatus orderStatus",
+          select:
+            "_id totalAmount paymentMethod paymentStatus orderStatus placedAt",
         })
         .populate({
           path: "userId",
           select: "name email phone",
         }),
       Payment.countDocuments(filter),
+      Payment.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalPayments: { $sum: 1 },
+            successfulCount: {
+              $sum: { $cond: [{ $eq: ["$status", "success"] }, 1, 0] },
+            },
+            successfulAmount: {
+              $sum: { $cond: [{ $eq: ["$status", "success"] }, "$amount", 0] },
+            },
+          },
+        },
+      ]),
     ]);
+
+    const totals = summaryAgg[0] || {};
 
     return {
       pagination: buildPaginationMeta({ total, page, limit }),
       payments,
+      summary: {
+        totalPayments: totals.totalPayments || 0,
+        successfulCount: totals.successfulCount || 0,
+        successfulAmount: totals.successfulAmount || 0,
+      },
     };
   } catch (error) {
     rethrowPaymentServiceError(error, "Failed to fetch payments");

@@ -18,9 +18,6 @@ const paymentSchema = new mongoose.Schema(
     },
     razorpayOrderId: {
       type: String,
-      required: true,
-      unique: true,
-      index: true,
     },
     razorpayPaymentId: {
       type: String,
@@ -65,6 +62,31 @@ const paymentSchema = new mongoose.Schema(
   }
 );
 
+paymentSchema.index(
+  { razorpayOrderId: 1 },
+  {
+    unique: true,
+    sparse: true,
+    name: "razorpayOrderId_1",
+  }
+);
+
 const Payment = mongoose.model("Payment", paymentSchema);
+
+export const ensurePaymentIndexes = async () => {
+  const indexes = await Payment.collection.indexes();
+  const razorpayIndex = indexes.find(
+    (index) => index.key?.razorpayOrderId === 1
+  );
+
+  if (razorpayIndex && !razorpayIndex.sparse) {
+    await Payment.collection.dropIndex(razorpayIndex.name);
+  }
+
+  await Payment.collection.createIndex(
+    { razorpayOrderId: 1 },
+    { unique: true, sparse: true, name: "razorpayOrderId_1" }
+  );
+};
 
 export default Payment;

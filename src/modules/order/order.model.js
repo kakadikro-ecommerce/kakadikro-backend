@@ -129,13 +129,6 @@ const orderSchema = new mongoose.Schema(
       index: true,
       immutable: true,
     },
-    orderNumber: {
-      type: String,
-      trim: true,
-      unique: true,
-      sparse: true,
-      index: true,
-    },
     items: {
       type: [orderItemSchema],
       required: true,

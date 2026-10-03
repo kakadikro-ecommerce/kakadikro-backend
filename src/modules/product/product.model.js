@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { normalizeProductType } from "./productType.catalog.js";
 
 const mapToPlainObject = (value) => {
   if (!value) {
@@ -19,9 +20,7 @@ const mapToPlainObject = (value) => {
 const transformProductResponse = (_, ret) => {
   ret.specifications = mapToPlainObject(ret.specifications);
 
-  if (!ret.productType) {
-    ret.productType = "GROCERY";
-  }
+  ret.productType = normalizeProductType(ret.productType);
 
   if (Array.isArray(ret.variants)) {
     ret.variants = ret.variants.map((variant) => {
@@ -101,9 +100,9 @@ const productSchema = new mongoose.Schema({
 
   productType: {
     type: String,
-    enum: ["GROCERY", "ELECTRONICS"],
+    enum: ["CROSSLIFE", "CROSSLINE"],
     required: true,
-    default: "GROCERY",
+    default: "CROSSLIFE",
     index: true
   },
 
@@ -176,9 +175,7 @@ const productSchema = new mongoose.Schema({
 });
 
 productSchema.pre("validate", function normalizeLegacyProductFields() {
-  if (!this.productType) {
-    this.productType = "GROCERY";
-  }
+  this.productType = normalizeProductType(this.productType);
 
   if (this.specifications == null) {
     this.specifications = new Map();

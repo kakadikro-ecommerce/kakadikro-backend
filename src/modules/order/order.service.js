@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import Order from "./order.model.js";
 import User from "../user/user.model.js";
 import Product from "../product/product.model.js";
@@ -31,6 +30,7 @@ import {
   isOnlineOrderPayment,
   rethrowPaymentServiceError,
 } from "../payment/payment.helpers.js";
+import { recordCodPaymentReceived } from "../payment/payment.service.js";
 
 const STATUS_FLOW = {
   pending: ["confirmed"],
@@ -39,32 +39,14 @@ const STATUS_FLOW = {
   delivered: [],
 };
 
-const generateOrderNumber = () => {
-  const now = new Date();
-  const stamp = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-  ].join("");
-  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
-  return `KD-${stamp}-${suffix}`;
-};
-
-const isMongoObjectId = (value) =>
-  mongoose.Types.ObjectId.isValid(value) &&
-  String(new mongoose.Types.ObjectId(value)) === String(value);
-
-const buildOrderLookupFilter = (orderIdOrNumber) => {
-  const value = String(orderIdOrNumber || "").trim();
+const buildOrderLookupFilter = (orderId) => {
+  const value = String(orderId || "").trim();
   if (!value) {
     return null;
   }
 
-  if (isMongoObjectId(value)) {
-    return { _id: value, isActive: true };
-  }
-
-  return { orderNumber: value, isActive: true };
+  ensureValidObjectId(value, "order");
+  return { _id: value, isActive: true };
 };
 
 export const createOrder = async (userId, payload) => {
@@ -86,22 +68,6 @@ export const createOrder = async (userId, payload) => {
     }
 
     const paymentMethod = payload.paymentMethod || "cod";
-
-    if (isOnlineOrderPayment(paymentMethod)) {
-      const unpaidOnlineOrder = await Order.findOne({
-        user: userId,
-        paymentMethod: { $ne: "cod" },
-        paymentStatus: { $in: ["pending", "failed"] },
-        orderStatus: { $ne: "cancelled" },
-        isActive: true,
-      }).sort({ createdAt: -1 });
-
-      if (unpaidOnlineOrder) {
-        throw badRequest(
-          "You already have an unpaid order. Please complete payment or cancel it before placing a new one."
-        );
-      }
-    }
 
     const productIds = cart.items.map((item) => {
       const productId = item.product?._id || item.product;
@@ -144,7 +110,6 @@ export const createOrder = async (userId, payload) => {
 
     const createdOrder = await Order.create({
       user: userId,
-      orderNumber: generateOrderNumber(),
       items: orderItems,
       shippingAddress,
       paymentMethod,
@@ -191,6 +156,54 @@ export const getMyOrders = async (userId, query = {}) => {
   }
 };
 
+const toPlainOrder = (order) =>
+  order?.toObject ? order.toObject() : order;
+
+const attachPaymentSummaries = async (orders) => {
+  const list = (Array.isArray(orders) ? orders : [orders]).map(toPlainOrder);
+  const orderIds = list.map((order) => order?._id).filter(Boolean);
+
+  if (orderIds.length === 0) {
+    return Array.isArray(orders) ? list : list[0] || null;
+  }
+
+  const payments = await Payment.find({ orderId: { $in: orderIds } })
+    .select(
+      "orderId status amount razorpayOrderId razorpayPaymentId refund createdAt"
+    )
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const paymentByOrderId = new Map();
+
+  for (const payment of payments) {
+    const key = String(payment.orderId);
+    if (!paymentByOrderId.has(key)) {
+      paymentByOrderId.set(key, payment);
+    }
+  }
+
+  const withPayments = list.map((order) => {
+    const payment = paymentByOrderId.get(String(order._id));
+
+    return {
+      ...order,
+      payment: payment
+        ? {
+            status: payment.status,
+            amount: payment.amount,
+            razorpayOrderId: payment.razorpayOrderId || "",
+            razorpayPaymentId: payment.razorpayPaymentId || "",
+            refundStatus: payment.refund?.status || "",
+            refundAmount: payment.refund?.amount || 0,
+          }
+        : null,
+    };
+  });
+
+  return Array.isArray(orders) ? withPayments : withPayments[0];
+};
+
 export const getAllOrders = async (query = {}) => {
   try {
     const { page, limit, skip } = normalizePagination(query);
@@ -226,12 +239,12 @@ export const getAllOrders = async (query = {}) => {
       Order.countDocuments(filter),
     ]);
 
+    const ordersWithPayments = await attachPaymentSummaries(orders);
+
     return {
       pagination: buildPaginationMeta({ total, page, limit }),
       orders: await Promise.all(
-        orders.map((order) =>
-          normalizeOrderImages(order.toObject ? order.toObject() : order)
-        )
+        ordersWithPayments.map((order) => normalizeOrderImages(order))
       ),
     };
   } catch (error) {
@@ -251,9 +264,9 @@ export const getOrderById = async (orderId) => {
       "Order not found"
     );
 
-    return await normalizeOrderImages(
-      order.toObject ? order.toObject() : order
-    );
+    const orderWithPayment = await attachPaymentSummaries(order);
+
+    return await normalizeOrderImages(orderWithPayment);
   } catch (error) {
     rethrowOrderServiceError(error, "Failed to fetch order");
   }
@@ -503,11 +516,35 @@ export const updateOrderStatus = async (orderId, payload) => {
     }
 
     if (payload.paymentStatus) {
-      order.paymentStatus = payload.paymentStatus;
+      const nextPaymentStatus = String(payload.paymentStatus).trim().toLowerCase();
 
-      if (payload.paymentStatus === "paid" && !order.paidAt) {
+      if (isOnlineOrderPayment(order.paymentMethod)) {
+        throw badRequest(
+          "Online payment status is updated only after Razorpay confirms the payment"
+        );
+      }
+
+      if (nextPaymentStatus !== "paid") {
+        throw badRequest("Cash on delivery can only be marked as paid");
+      }
+
+      if (order.orderStatus !== "delivered") {
+        throw badRequest(
+          "Cash can be marked received only after the order is delivered"
+        );
+      }
+
+      if (order.paymentStatus === "paid") {
+        throw badRequest("Cash is already marked as received for this order");
+      }
+
+      order.paymentStatus = "paid";
+
+      if (!order.paidAt) {
         order.paidAt = new Date();
       }
+
+      await recordCodPaymentReceived(order);
     }
 
     try {

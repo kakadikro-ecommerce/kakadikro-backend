@@ -72,6 +72,7 @@ export const getAllPaymentsAdmin = async (req, res, next) => {
       success: true,
       message: "Payments fetched successfully",
       pagination: result.pagination,
+      summary: result.summary,
       data: result.payments,
     });
   } catch (error) {

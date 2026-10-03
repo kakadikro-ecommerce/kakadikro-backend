@@ -1,6 +1,10 @@
 import slugify from "slugify";
 import Product from "./product.model.js";
 import {
+  buildProductTypeFilter,
+  normalizeProductType,
+} from "./productType.catalog.js";
+import {
   buildPaginationMeta,
   normalizePagination,
 } from "../../shared/utils/pagination.js";
@@ -201,17 +205,14 @@ const applyCommonProductFilters = (filter, query) => {
   }
 
   if (productType) {
-    const normalizedType = String(productType).trim().toUpperCase();
+    const typeFilter = buildProductTypeFilter(productType);
 
-    // Unmigrated documents have no productType; treat them as GROCERY
-    if (normalizedType === "GROCERY") {
-      filter.$or = [
-        { productType: "GROCERY" },
-        { productType: { $exists: false } },
-        { productType: null },
-      ];
+    if (typeFilter?.$or) {
+      filter.$or = typeFilter.$or;
+    } else if (typeFilter?.productType) {
+      filter.productType = typeFilter.productType;
     } else {
-      filter.productType = normalizedType;
+      filter.productType = String(productType).trim().toUpperCase();
     }
   }
 
@@ -236,9 +237,7 @@ export const createProduct = async (data, userId) => {
     productData.createdBy = userId;
   }
 
-  if (!productData.productType) {
-    productData.productType = "GROCERY";
-  }
+  productData.productType = normalizeProductType(productData.productType);
 
   if (productData.specifications === undefined) {
     productData.specifications = {};
@@ -393,9 +392,6 @@ export const updateProductStatus = async (id, isActive) => {
   return product;
 };
 
-const normalizeProductType = (productType) =>
-  String(productType || "GROCERY").trim().toUpperCase();
-
 export const getRelatedProducts = async (slug, limit = 4) => {
   const current = await Product.findOne({ slug, isActive: true }).lean();
 
@@ -410,12 +406,7 @@ export const getRelatedProducts = async (slug, limit = 4) => {
   const baseFilter = {
     isActive: true,
     slug: { $ne: slug },
-    $or: [
-      { productType },
-      ...(productType === "GROCERY"
-        ? [{ productType: { $exists: false } }, { productType: null }]
-        : []),
-    ],
+    ...buildProductTypeFilter(productType),
   };
 
   const sameCategory = current.category

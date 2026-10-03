@@ -116,10 +116,10 @@ export const updateProduct = async (req, res, next) => {
     const originalPayload = preparedRequest.payload;
 
     // Merge existing type-specific fields for validation only, so partial
-    // updates still enforce grocery/electronics rules without forcing
+    // updates still enforce Cross Life / Cross Line rules without forcing
     // the admin to resend every field.
     const productType =
-      originalPayload.productType || existingProduct.productType || "GROCERY";
+      originalPayload.productType || existingProduct.productType || "CROSSLIFE";
     const existingSpecs =
       existingProduct.specifications instanceof Map
         ? Object.fromEntries(existingProduct.specifications)

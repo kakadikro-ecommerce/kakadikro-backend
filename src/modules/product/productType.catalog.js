@@ -1,7 +1,46 @@
+export const PRODUCT_TYPE_ALIASES = {
+  CROSSLIFE: "CROSSLIFE",
+  CROSSLINE: "CROSSLINE",
+  GROCERY: "CROSSLIFE",
+  ELECTRONICS: "CROSSLINE",
+  EQUIPMENT: "CROSSLINE",
+};
+
+export const resolveProductType = (code) => {
+  const normalized = String(code || "").trim().toUpperCase();
+  return PRODUCT_TYPE_ALIASES[normalized] || null;
+};
+
+export const normalizeProductType = (code) =>
+  resolveProductType(code) || "CROSSLIFE";
+
+export const buildProductTypeFilter = (code) => {
+  const canonical = resolveProductType(code);
+
+  if (canonical === "CROSSLIFE") {
+    return {
+      $or: [
+        { productType: { $in: ["CROSSLIFE", "GROCERY"] } },
+        { productType: { $exists: false } },
+        { productType: null },
+        { productType: "" },
+      ],
+    };
+  }
+
+  if (canonical === "CROSSLINE") {
+    return {
+      productType: { $in: ["CROSSLINE", "ELECTRONICS", "EQUIPMENT"] },
+    };
+  }
+
+  return null;
+};
+
 export const PRODUCT_TYPES = [
   {
-    code: "GROCERY",
-    label: "Grocery",
+    code: "CROSSLIFE",
+    label: "Cross Life",
     fields: [
       "name",
       "category",
@@ -31,8 +70,8 @@ export const PRODUCT_TYPES = [
     notRequiredFields: ["specifications"],
   },
   {
-    code: "ELECTRONICS",
-    label: "Electronics",
+    code: "CROSSLINE",
+    label: "Cross Line",
     fields: [
       "name",
       "category",
@@ -58,18 +97,17 @@ export const PRODUCT_TYPES = [
       "images",
       "video",
     ],
-    // Grocery-only fields — optional / not required for electronics
+    // Cross Life-only fields — optional / not required for Cross Line
     notRequiredFields: ["ingredients"],
   },
 ];
 
 export const getProductType = (code) => {
-  const normalized = String(code || "GROCERY").trim().toUpperCase();
+  const normalized = normalizeProductType(code);
   return PRODUCT_TYPES.find((type) => type.code === normalized) || PRODUCT_TYPES[0];
 };
 
-export const isKnownProductType = (code) =>
-  PRODUCT_TYPES.some((type) => type.code === String(code || "").trim().toUpperCase());
+export const isKnownProductType = (code) => resolveProductType(code) !== null;
 
 const hasNonEmptySpecifications = (specifications) => {
   if (!specifications || typeof specifications !== "object" || Array.isArray(specifications)) {
@@ -85,22 +123,22 @@ const hasNonEmptySpecifications = (specifications) => {
 
 /**
  * Type-specific required-field checks used by create/update Joi schemas.
- * Grocery requires ingredients; Electronics requires specifications.
+ * Cross Life requires ingredients; Cross Line requires specifications.
  * Cross-type fields are never required.
  */
 export const validateProductTypeFields = (value, helpers) => {
-  const productType = String(value.productType || "GROCERY").trim().toUpperCase();
+  const productType = normalizeProductType(value.productType);
 
-  if (productType === "GROCERY") {
+  if (productType === "CROSSLIFE") {
     if (!Array.isArray(value.ingredients) || value.ingredients.length === 0) {
-      return helpers.message("Ingredients are required for grocery products");
+      return helpers.message("Ingredients are required for Cross Life products");
     }
   }
 
-  if (productType === "ELECTRONICS") {
+  if (productType === "CROSSLINE") {
     if (!hasNonEmptySpecifications(value.specifications)) {
       return helpers.message(
-        "Specifications are required for electronics products"
+        "Specifications are required for Cross Line products"
       );
     }
   }

@@ -1,6 +1,9 @@
 import Joi from "joi";
 import { nonNumericString } from "../../shared/validation/string.js";
-import { validateProductTypeFields } from "./productType.catalog.js";
+import {
+  resolveProductType,
+  validateProductTypeFields,
+} from "./productType.catalog.js";
 
 const imageSchema = Joi.object({
   url: Joi.string().trim().required(),
@@ -48,9 +51,16 @@ const variantSchema = Joi.object({
   });
 
 const productTypeSchema = Joi.string()
-  .valid("GROCERY", "ELECTRONICS")
+  .trim()
+  .custom((value, helpers) => {
+    const resolved = resolveProductType(value);
+    if (!resolved) {
+      return helpers.error("any.only");
+    }
+    return resolved;
+  })
   .messages({
-    "any.only": "Product type must be either Grocery or Electronics",
+    "any.only": "Product type must be either Cross Life or Cross Line",
   });
 
 const ingredientsSchema = Joi.array()
