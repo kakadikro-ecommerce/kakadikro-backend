@@ -360,8 +360,15 @@ export const updateProduct = async (id, data) => {
 
   Object.assign(product, productData);
 
+  // Mongoose can miss array/subdocument updates via Object.assign — set explicitly.
+  if (Array.isArray(productData.images)) {
+    product.images = productData.images;
+    product.markModified("images");
+  }
+
   if (Object.prototype.hasOwnProperty.call(productData, "video")) {
     product.video = productData.video;
+    product.markModified("video");
   }
 
   await product.save();

@@ -7,6 +7,7 @@ import {
 
 const imageSchema = Joi.object({
   url: Joi.string().trim().required(),
+  key: Joi.string().trim().optional(),
   altText: Joi.string().allow("").optional(),
 });
 

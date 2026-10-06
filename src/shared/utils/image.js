@@ -53,7 +53,7 @@ const extractKeyFromUrl = (value) => {
   const knownHosts = getKnownStorageHosts();
 
   if (knownHosts.has(host)) {
-    return pathname;
+    return pathname || null;
   }
 
   if (
@@ -61,7 +61,12 @@ const extractKeyFromUrl = (value) => {
     host.includes("amazonaws.com") &&
     pathname.startsWith(`${bucket}/`)
   ) {
-    return pathname.slice(bucket.length + 1);
+    return pathname.slice(bucket.length + 1) || null;
+  }
+
+  // Presigned S3 / CloudFront URLs may not match configured hosts exactly.
+  if (host.includes("amazonaws.com") || host.includes("cloudfront.net")) {
+    return pathname || null;
   }
 
   return null;
@@ -79,14 +84,13 @@ export const extractImageKey = (value) => {
   }
 
   if (!isFullUrl(trimmedValue)) {
-    return removeLeadingSlash(trimmedValue.split(/[?#]/)[0]);
+    return removeLeadingSlash(trimmedValue.split(/[?#]/)[0]) || null;
   }
 
   try {
-    const key = extractKeyFromUrl(trimmedValue);
-    return key || trimmedValue;
+    return extractKeyFromUrl(trimmedValue);
   } catch {
-    return removeLeadingSlash(trimmedValue.split(/[?#]/)[0]);
+    return removeLeadingSlash(trimmedValue.split(/[?#]/)[0]) || null;
   }
 };
 
@@ -108,15 +112,38 @@ export const getImageUrl = async (key) => {
   return getPresignedGetUrl(extractedKey);
 };
 
-export const normalizeImageRecordForStorage = (image = {}) => ({
-  ...image,
-  url: extractImageKey(image.url),
-});
+export const normalizeImageRecordForStorage = (image = {}) => {
+  const rawValue =
+    typeof image?.key === "string" && image.key.trim()
+      ? image.key
+      : image?.url;
+  const key = extractImageKey(rawValue);
 
-export const mapImageRecordToResponse = async (image = {}) => ({
-  ...image,
-  url: await getImageUrl(image.url),
-});
+  if (!key || isFullUrl(key)) {
+    const error = new Error(
+      "Please provide a valid image key or storage URL for existing media"
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return {
+    url: key,
+    altText: typeof image?.altText === "string" ? image.altText : "",
+  };
+};
+
+export const mapImageRecordToResponse = async (image = {}) => {
+  const storageKey = extractImageKey(image?.url);
+  const key =
+    storageKey && !isFullUrl(storageKey) ? storageKey : undefined;
+
+  return {
+    ...image,
+    ...(key ? { key } : {}),
+    url: await getImageUrl(image.url),
+  };
+};
 
 const toPlainProduct = (product) => {
   if (!product) {
@@ -152,14 +179,19 @@ const mapMediaUrl = (value, urlMap) => {
   return urlMap.get(key) || null;
 };
 
-const mapVideoToResponse = (video, urlMap) => {
-  if (!video || typeof video !== "object" || !video.url) {
+const mapMediaRecordToResponse = (media, urlMap) => {
+  if (!media || typeof media !== "object" || !media.url) {
     return null;
   }
 
+  const storageKey = extractImageKey(media.url);
+  const key =
+    storageKey && !isFullUrl(storageKey) ? storageKey : undefined;
+
   return {
-    ...video,
-    url: mapMediaUrl(video.url, urlMap),
+    ...media,
+    ...(key ? { key } : {}),
+    url: mapMediaUrl(media.url, urlMap),
   };
 };
 
@@ -181,13 +213,12 @@ export const attachPresignedUrlsToProducts = async (products = []) => {
 
   for (const product of plainProducts) {
     if (Array.isArray(product?.images)) {
-      product.images = product.images.map((image) => ({
-        ...image,
-        url: mapMediaUrl(image?.url, urlMap),
-      }));
+      product.images = product.images
+        .map((image) => mapMediaRecordToResponse(image, urlMap))
+        .filter(Boolean);
     }
 
-    product.video = mapVideoToResponse(product.video, urlMap);
+    product.video = mapMediaRecordToResponse(product.video, urlMap);
   }
 
   return plainProducts;
