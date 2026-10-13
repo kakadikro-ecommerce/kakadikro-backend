@@ -22,6 +22,11 @@ import {
   rethrowPaymentServiceError,
   SUPPORTED_WEBHOOK_EVENTS,
 } from "./payment.helpers.js";
+import {
+  reconcilePaidAmount,
+  shouldMarkOrderPaid,
+} from "../checkout/shipping-info.js";
+import { guestTokensMatch } from "../checkout/guest-token.js";
 
 const loadNormalizedOrder = async (orderId) => {
   const order = await attachOrderRelations(Order.findById(orderId));
@@ -32,16 +37,112 @@ const loadNormalizedOrder = async (orderId) => {
   return normalizeOrderImages(order.toObject ? order.toObject() : order);
 };
 
-const clearCartAfterSuccessfulPayment = async (userId) => {
-  if (!userId) {
+const clearCartAfterSuccessfulPayment = async (payment) => {
+  try {
+    if (payment?.userId) {
+      await cartService.clearCart(payment.userId.toString());
+      return;
+    }
+
+    if (payment?.guestTokenHash) {
+      await cartService.clearCart({ guestTokenHash: payment.guestTokenHash });
+    }
+  } catch {
+    // Payment success must not fail if cart cleanup has an issue.
+  }
+};
+
+const readRazorpayAddress = (remoteOrder) => {
+  const details = remoteOrder?.customer_details || {};
+  const address = details.shipping_address || details.billing_address || null;
+  const line1 = String(address?.line1 || "").trim();
+
+  if (!line1) {
+    return null;
+  }
+
+  return {
+    fullName: String(address.name || "").trim(),
+    phone: String(address.contact || details.contact || "").trim(),
+    addressLine1: line1,
+    addressLine2: String(address.line2 || "").trim(),
+    city: String(address.city || "").trim(),
+    state: String(address.state || "").trim(),
+    postalCode: String(address.zipcode || "").trim(),
+    country: String(address.country || "India").trim() || "India",
+    email: String(details.email || "").trim(),
+  };
+};
+
+const applyRazorpayShipping = async (order, razorpayOrderId) => {
+  if (!order || !razorpayOrderId) {
     return;
   }
 
   try {
-    await cartService.clearCart(userId.toString());
+    const remoteOrder = await getRazorpayInstance().orders.fetch(razorpayOrderId);
+    const address = readRazorpayAddress(remoteOrder);
+    if (!address) {
+      return;
+    }
+
+    const verifiedPhone = order.phoneVerified
+      ? order.guestContact?.phone || order.shippingAddress?.phone || address.phone
+      : address.phone;
+
+    order.shippingAddress = {
+      fullName: address.fullName,
+      phone: verifiedPhone || "",
+      addressLine1: address.addressLine1,
+      addressLine2: address.addressLine2,
+      city: address.city,
+      state: address.state,
+      postalCode: address.postalCode,
+      country: address.country,
+    };
+    order.guestContact = {
+      name: address.fullName || order.guestContact?.name || "",
+      email: address.email || order.guestContact?.email || "",
+      phone: verifiedPhone || order.guestContact?.phone || "",
+    };
+    order.markModified("shippingAddress");
   } catch {
-    // Payment success must not fail if cart cleanup has an issue.
+    // A captured payment must still be recorded if Razorpay order details are unavailable.
   }
+};
+
+const applyVerifiedContact = (order, paymentEntity) => {
+  const contact = String(paymentEntity?.contact || "").trim();
+  const email = String(paymentEntity?.email || "").trim();
+
+  if (!contact && !email) {
+    return;
+  }
+
+  order.guestContact = {
+    name: order.guestContact?.name || "",
+    email: email || order.guestContact?.email || "",
+    phone: contact || order.guestContact?.phone || "",
+  };
+
+  if (contact) {
+    order.phoneVerified = true;
+    order.shippingAddress = {
+      ...(order.shippingAddress?.toObject?.() || order.shippingAddress || {}),
+      phone: contact,
+    };
+    order.markModified("shippingAddress");
+  }
+};
+
+const applyCapturedAmount = (order, payment, paymentEntity) => {
+  const amountPaise = Number(paymentEntity?.amount);
+  if (!Number.isFinite(amountPaise)) {
+    return;
+  }
+
+  reconcilePaidAmount(order, amountPaise);
+  payment.amount = Number(order.totalAmount);
 };
 
 const markOrderPaid = async (order) => {
@@ -102,12 +203,13 @@ const findPaymentByRazorpayOrderId = async (razorpayOrderId) => {
     return null;
   }
 
-  return Payment.findOne({ razorpayOrderId });
+  return Payment.findOne({ razorpayOrderId }).select("+guestTokenHash");
 };
 
 const applySuccessfulPayment = async ({
   razorpayOrderId,
   razorpayPaymentId,
+  paymentEntity,
 }) => {
   const payment = await findPaymentByRazorpayOrderId(razorpayOrderId);
 
@@ -122,18 +224,36 @@ const applySuccessfulPayment = async ({
     payment.razorpayPaymentId = razorpayPaymentId;
   }
 
+  const isCod = String(paymentEntity?.method || "").toLowerCase() === "cod";
+
   // Idempotent — already captured/verified
-  if (payment.status !== "success" && payment.status !== "refunded") {
+  if (!isCod && payment.status !== "success" && payment.status !== "refunded") {
     payment.status = "success";
   }
 
   await payment.save();
 
   const order = await Order.findById(payment.orderId);
-  await markOrderPaid(order);
+  if (order) {
+    applyVerifiedContact(order, paymentEntity);
+    await applyRazorpayShipping(order, razorpayOrderId);
+    applyCapturedAmount(order, payment, paymentEntity);
+
+    if (String(paymentEntity?.method || "").toLowerCase() === "cod") {
+      order.paymentMethod = "cod";
+    }
+
+    if (shouldMarkOrderPaid(paymentEntity)) {
+      await markOrderPaid(order);
+    } else {
+      await order.save();
+    }
+
+    await payment.save();
+  }
 
   if (!wasAlreadySuccess) {
-    await clearCartAfterSuccessfulPayment(payment.userId);
+    await clearCartAfterSuccessfulPayment(payment);
   }
 
   return { handled: true, payment, order };
@@ -248,7 +368,7 @@ export const createPaymentOrder = async (userId, payload) => {
       "Order not found"
     );
 
-    if (order.user.toString() !== userId) {
+    if (!order.user || order.user.toString() !== userId) {
       throw forbidden("You are not allowed to create payment for this order");
     }
 
@@ -274,13 +394,28 @@ export const createPaymentOrder = async (userId, payload) => {
     const amountInPaise = Math.round(amountInRupees * 100);
 
     const razorpay = getRazorpayInstance();
+    const lineItems = (order.items || []).map((item) => {
+      const pricePaise = Math.round(Number(item.unitPrice) * 100);
+      return {
+        sku: String(item.product),
+        variant_id: String(item.weight || item.product),
+        price: pricePaise,
+        offer_price: pricePaise,
+        quantity: item.quantity,
+        name: item.name,
+        description: item.name,
+      };
+    });
     const paymentOrder = await razorpay.orders.create({
       amount: amountInPaise,
       currency: "INR",
       receipt: String(order._id).slice(0, 40),
+      line_items_total: Math.round(Number(order.subtotalAmount || order.totalAmount) * 100),
+      line_items: lineItems,
       notes: {
         orderId: order._id.toString(),
         userId,
+        checkout: "magic",
       },
     });
 
@@ -322,31 +457,65 @@ export const createPaymentOrder = async (userId, payload) => {
         amount: paymentOrder.amount,
         currency: paymentOrder.currency || "INR",
       },
+      checkout: {
+        oneClickCheckout: true,
+        script: "https://checkout.razorpay.com/v1/magic-checkout.js",
+        name: process.env.CHECKOUT_BUSINESS_NAME || "Kaka Dikro",
+        showCoupons: false,
+      },
     };
   } catch (error) {
     rethrowPaymentServiceError(error, "Unable to start payment. Please try again.");
   }
 };
 
-export const verifyPayment = async (userId, payload) => {
+const applyClientAddress = (order, address) => {
+  if (!address) {
+    return;
+  }
+
+  const verifiedPhone = order.phoneVerified ? order.guestContact?.phone || order.shippingAddress?.phone : "";
+
+  order.shippingAddress = {
+    ...(order.shippingAddress?.toObject?.() || order.shippingAddress || {}),
+    ...address,
+    phone: verifiedPhone || "",
+  };
+  order.markModified("shippingAddress");
+
+  if (address.fullName && !order.guestContact?.name) {
+    order.guestContact = {
+      ...(order.guestContact?.toObject?.() || order.guestContact || {}),
+      name: address.fullName,
+    };
+  }
+};
+
+export const verifyPayment = async (userId, payload, guestOrderToken = "") => {
   try {
-    ensureValidObjectId(userId, "user");
     getRazorpayInstance();
 
+    const paymentQuery = { razorpayOrderId: payload.razorpayOrderId };
+    if (userId) {
+      ensureValidObjectId(userId, "user");
+      paymentQuery.userId = userId;
+    }
+
     const payment = ensureFound(
-      await Payment.findOne({
-        razorpayOrderId: payload.razorpayOrderId,
-        userId,
-      }),
+      await Payment.findOne(paymentQuery).select("+guestTokenHash"),
       "Payment record not found"
     );
 
     const order = ensureFound(
-      await Order.findById(payment.orderId),
+      await Order.findById(payment.orderId).select("+guestAccessTokenHash +guestTokenHash"),
       "Order not found"
     );
 
-    if (order.user.toString() !== userId) {
+    if (userId) {
+      if (!order.user || order.user.toString() !== userId) {
+        throw forbidden("You are not allowed to verify payment for this order");
+      }
+    } else if (!guestTokensMatch(order.guestAccessTokenHash, guestOrderToken)) {
       throw forbidden("You are not allowed to verify payment for this order");
     }
 
@@ -364,14 +533,37 @@ export const verifyPayment = async (userId, payload) => {
 
     const wasAlreadySuccess = payment.status === "success";
 
+    let remotePayment = null;
+    try {
+      remotePayment = await getRazorpayInstance().payments.fetch(payload.razorpayPaymentId);
+    } catch {
+      remotePayment = null;
+    }
+
+    const isCod = String(remotePayment?.method || "").toLowerCase() === "cod";
+
     payment.razorpayPaymentId = payload.razorpayPaymentId;
-    payment.status = "success";
+    if (!isCod) {
+      payment.status = "success";
+    }
     await payment.save();
 
-    await markOrderPaid(order);
+    applyVerifiedContact(order, remotePayment);
+    await applyRazorpayShipping(order, payload.razorpayOrderId);
+    applyCapturedAmount(order, payment, remotePayment);
+    applyClientAddress(order, payload.shippingAddress);
+
+    if (isCod) {
+      order.paymentMethod = "cod";
+      await order.save();
+    } else {
+      await markOrderPaid(order);
+    }
+
+    await payment.save();
 
     if (!wasAlreadySuccess) {
-      await clearCartAfterSuccessfulPayment(userId);
+      await clearCartAfterSuccessfulPayment(payment);
     }
 
     const normalizedOrder = await loadNormalizedOrder(order._id);
@@ -513,6 +705,7 @@ export const handleRazorpayWebhook = async (eventPayload) => {
           ...(await applySuccessfulPayment({
             razorpayOrderId: paymentEntity?.order_id,
             razorpayPaymentId: paymentEntity?.id,
+            paymentEntity,
           })),
         };
 
@@ -522,6 +715,7 @@ export const handleRazorpayWebhook = async (eventPayload) => {
           ...(await applySuccessfulPayment({
             razorpayOrderId: orderEntity?.id || paymentEntity?.order_id,
             razorpayPaymentId: paymentEntity?.id,
+            paymentEntity,
           })),
         };
 

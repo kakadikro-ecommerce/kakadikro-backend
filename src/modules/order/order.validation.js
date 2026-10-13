@@ -40,6 +40,7 @@ export const updateOrderStatusValidation = Joi.object({
     .optional(),
   trackingId: Joi.string().trim().allow("").optional(),
   trackingNumber: Joi.string().trim().allow("").optional(),
+  trackingUrl: Joi.string().trim().uri().allow("").optional(),
   courierName: Joi.string()
   .trim()
   .pattern(/^[A-Za-z\s]+$/)
@@ -48,6 +49,7 @@ export const updateOrderStatusValidation = Joi.object({
   .optional(),
   shipment: Joi.object({
   trackingId: Joi.string().trim().allow("").optional(),
+  trackingUrl: Joi.string().trim().uri().allow("").optional(),
   courierName: Joi.string()
     .trim()
     .pattern(/^[A-Za-z\s]+$/)
@@ -61,6 +63,7 @@ export const updateOrderStatusValidation = Joi.object({
   "adminNote",
   "trackingId",
   "trackingNumber",
+  "trackingUrl",
   "courierName",
   "courier",
   "shipment"
@@ -68,4 +71,14 @@ export const updateOrderStatusValidation = Joi.object({
 
 export const updateOrderActiveStatusValidation = Joi.object({
   isActive: Joi.boolean().required(),
+});
+
+export const updateShipmentValidation = Joi.object({
+  courierName: Joi.string()
+    .trim()
+    .pattern(/^[A-Za-z\s]+$/)
+    .message("Courier name must contain only letters")
+    .required(),
+  trackingNumber: Joi.string().trim().min(3).max(80).required(),
+  trackingUrl: Joi.string().trim().uri().allow("").optional(),
 });

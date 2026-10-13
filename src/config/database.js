@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { ensurePaymentIndexes } from "../modules/payment/payment.model.js";
+import { ensureCartIndexes } from "../modules/cart/cart.model.js";
 
 const connectDB = async () => {
   try {
@@ -7,6 +8,7 @@ const connectDB = async () => {
 
     console.log(`MongoDB Connected: ${conn.connection.host}`);
     await ensurePaymentIndexes();
+    await ensureCartIndexes();
 
     mongoose.connection.on("disconnected", () => {
       console.log("MongoDB disconnected");

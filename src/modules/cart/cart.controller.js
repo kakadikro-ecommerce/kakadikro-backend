@@ -1,14 +1,24 @@
 import * as cartService from "./cart.service.js";
 
+const sendCart = (req, res, status, message, cart) => {
+  if (req.cartActor?.issued && req.cartActor.guestToken) {
+    res.setHeader("X-Guest-Cart-Token", req.cartActor.guestToken);
+  }
+
+  return res.status(status).json({
+    success: true,
+    message,
+    ...(req.cartActor?.issued && req.cartActor.guestToken
+      ? { guestCartToken: req.cartActor.guestToken }
+      : {}),
+    data: cart,
+  });
+};
+
 export const getMyCart = async (req, res, next) => {
   try {
-    const cart = await cartService.getMyCart(req.user.id);
-
-    return res.status(200).json({
-      success: true,
-      message: "Cart fetched successfully",
-      data: cart,
-    });
+    const cart = await cartService.getMyCart(req.cartActor);
+    return sendCart(req, res, 200, "Cart fetched successfully", cart);
   } catch (error) {
     return next(error);
   }
@@ -16,13 +26,8 @@ export const getMyCart = async (req, res, next) => {
 
 export const addItemToCart = async (req, res, next) => {
   try {
-    const cart = await cartService.addItemToCart(req.user.id, req.body);
-
-    return res.status(200).json({
-      success: true,
-      message: "Item added to cart successfully",
-      data: cart,
-    });
+    const cart = await cartService.addItemToCart(req.cartActor, req.body);
+    return sendCart(req, res, 200, "Item added to cart successfully", cart);
   } catch (error) {
     return next(error);
   }
@@ -31,16 +36,11 @@ export const addItemToCart = async (req, res, next) => {
 export const updateCartItemQuantity = async (req, res, next) => {
   try {
     const cart = await cartService.updateCartItemQuantity(
-      req.user.id,
+      req.cartActor,
       req.params.itemId,
       req.body
     );
-
-    return res.status(200).json({
-      success: true,
-      message: "Cart item updated successfully",
-      data: cart,
-    });
+    return sendCart(req, res, 200, "Cart item updated successfully", cart);
   } catch (error) {
     return next(error);
   }
@@ -48,13 +48,8 @@ export const updateCartItemQuantity = async (req, res, next) => {
 
 export const removeCartItem = async (req, res, next) => {
   try {
-    const cart = await cartService.removeCartItem(req.user.id, req.params.itemId);
-
-    return res.status(200).json({
-      success: true,
-      message: "Cart item removed successfully",
-      data: cart,
-    });
+    const cart = await cartService.removeCartItem(req.cartActor, req.params.itemId);
+    return sendCart(req, res, 200, "Cart item removed successfully", cart);
   } catch (error) {
     return next(error);
   }
@@ -62,13 +57,8 @@ export const removeCartItem = async (req, res, next) => {
 
 export const clearCart = async (req, res, next) => {
   try {
-    const cart = await cartService.clearCart(req.user.id);
-
-    return res.status(200).json({
-      success: true,
-      message: "Cart cleared successfully",
-      data: cart,
-    });
+    const cart = await cartService.clearCart(req.cartActor);
+    return sendCart(req, res, 200, "Cart cleared successfully", cart);
   } catch (error) {
     return next(error);
   }

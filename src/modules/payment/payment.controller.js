@@ -1,4 +1,6 @@
 import * as paymentService from "./payment.service.js";
+import { readGuestOrderToken } from "../checkout/magic-checkout.service.js";
+import { unauthorized } from "../../shared/errors/http-error.js";
 
 export const createPaymentOrder = async (req, res, next) => {
   try {
@@ -19,7 +21,18 @@ export const createPaymentOrder = async (req, res, next) => {
 
 export const verifyPayment = async (req, res, next) => {
   try {
-    const result = await paymentService.verifyPayment(req.user.id, req.body);
+    const userId = req.user?.role === "user" ? req.user.id : "";
+    const guestOrderToken = userId ? "" : readGuestOrderToken(req);
+
+    if (!userId && !guestOrderToken) {
+      throw unauthorized("Please log in or present a valid order access token");
+    }
+
+    const result = await paymentService.verifyPayment(
+      userId,
+      req.body,
+      guestOrderToken
+    );
 
     return res.status(200).json({
       success: true,

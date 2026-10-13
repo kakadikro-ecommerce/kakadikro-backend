@@ -83,7 +83,11 @@ export const attachOrderRelations = (query) =>
     .populate("items.product", "name slug category productType images variants");
 
 export const normalizeOrderImages = async (order) => {
-  const orderData = order?.toObject ? order.toObject() : order;
+  const orderData = order?.toObject ? order.toObject() : { ...order };
+
+  delete orderData.guestAccessTokenHash;
+  delete orderData.guestTokenHash;
+  delete orderData.idempotencyKey;
 
   if (!orderData?.items || !Array.isArray(orderData.items)) {
     return orderData;
@@ -116,10 +120,13 @@ export const normalizeOrderImages = async (order) => {
 };
 
 export const ensureOrderAccess = (order, requester) => {
-  const isOwner = order.user?._id
-    ? order.user._id.toString() === requester.id
-    : order.user.toString() === requester.id;
-  const isAdmin = requester.role === "admin";
+  const ownerId = order.user?._id
+    ? order.user._id.toString()
+    : order.user
+      ? order.user.toString()
+      : "";
+  const isOwner = Boolean(ownerId) && ownerId === requester.id;
+  const isAdmin = requester.role === "admin" || requester.role === "super_admin";
 
   if (!isOwner && !isAdmin) {
     throw forbidden("You are not allowed to access this order");

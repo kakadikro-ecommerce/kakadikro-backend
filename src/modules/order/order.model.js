@@ -53,18 +53,18 @@ const shippingAddressSchema = new mongoose.Schema(
   {
     fullName: {
       type: String,
-      required: true,
       trim: true,
+      default: "",
     },
     phone: {
       type: String,
-      required: true,
       trim: true,
+      default: "",
     },
     addressLine1: {
       type: String,
-      required: true,
       trim: true,
+      default: "",
     },
     addressLine2: {
       type: String,
@@ -73,22 +73,21 @@ const shippingAddressSchema = new mongoose.Schema(
     },
     city: {
       type: String,
-      required: true,
       trim: true,
+      default: "",
     },
     state: {
       type: String,
-      required: true,
       trim: true,
+      default: "",
     },
     postalCode: {
       type: String,
-      required: true,
       trim: true,
+      default: "",
     },
     country: {
       type: String,
-      required: true,
       trim: true,
       default: "India",
     },
@@ -104,6 +103,11 @@ const shipmentSchema = new mongoose.Schema(
       default: "",
     },
     courierName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    trackingUrl: {
       type: String,
       trim: true,
       default: "",
@@ -125,9 +129,45 @@ const orderSchema = new mongoose.Schema(
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
       index: true,
       immutable: true,
+    },
+    isGuest: {
+      type: Boolean,
+      default: false,
+    },
+    guestContact: {
+      name: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      email: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      phone: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+    },
+    phoneVerified: {
+      type: Boolean,
+      default: false,
+    },
+    guestTokenHash: {
+      type: String,
+      select: false,
+    },
+    guestAccessTokenHash: {
+      type: String,
+      select: false,
+    },
+    idempotencyKey: {
+      type: String,
+      select: false,
     },
     items: {
       type: [orderItemSchema],
@@ -140,7 +180,7 @@ const orderSchema = new mongoose.Schema(
     },
     shippingAddress: {
       type: shippingAddressSchema,
-      required: true,
+      default: () => ({}),
     },
     shipment: {
       type: shipmentSchema,
@@ -150,7 +190,6 @@ const orderSchema = new mongoose.Schema(
       type: String,
       enum: PAYMENT_METHODS,
       default: "cod",
-      immutable: true,
     },
     paymentStatus: {
       type: String,
@@ -172,7 +211,6 @@ const orderSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0,
-      immutable: true,
     },
     taxAmount: {
       type: Number,
@@ -190,7 +228,6 @@ const orderSchema = new mongoose.Schema(
       type: Number,
       required: true,
       min: 0,
-      immutable: true,
     },
     placedAt: {
       type: Date,
@@ -218,6 +255,24 @@ orderSchema.virtual("orderOwner", {
   foreignField: "_id",
   justOne: true,
 });
+
+orderSchema.index(
+  { guestAccessTokenHash: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { guestAccessTokenHash: { $type: "string" } },
+    name: "guestAccessTokenHash_1",
+  }
+);
+
+orderSchema.index(
+  { idempotencyKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { idempotencyKey: { $type: "string" } },
+    name: "idempotencyKey_1",
+  }
+);
 
 const Order = mongoose.model("Order", orderSchema);
 

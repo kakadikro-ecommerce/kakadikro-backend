@@ -15,21 +15,45 @@ import {
 } from "./cart.helpers.js";
 import { extractImageKey } from "../../shared/utils/image.js";
 
-const getOrCreateCart = async (userId) => {
-  let cart = await Cart.findOne({ user: userId });
+const ownerFilter = (actor) => {
+  if (actor?.userId) {
+    ensureValidObjectId(actor.userId, "user");
+    return { user: actor.userId };
+  }
+
+  if (!actor?.guestTokenHash) {
+    throw new Error("Cart owner is missing");
+  }
+
+  return { guestTokenHash: actor.guestTokenHash };
+};
+
+const getOrCreateCart = async (actor) => {
+  const filter = ownerFilter(actor);
+  let cart = await Cart.findOne(filter).select("+guestTokenHash");
 
   if (!cart) {
-    cart = await Cart.create({ user: userId, items: [] });
+    cart = await Cart.create({
+      ...filter,
+      items: [],
+    });
   }
 
   return cart;
 };
 
-export const getMyCart = async (userId) => {
-  try {
-    ensureValidObjectId(userId, "user");
+const actorFromUserId = (userIdOrActor) => {
+  if (userIdOrActor && typeof userIdOrActor === "object") {
+    return userIdOrActor;
+  }
 
-    const cart = await getOrCreateCart(userId);
+  return { userId: userIdOrActor };
+};
+
+export const getMyCart = async (userIdOrActor) => {
+  try {
+    const actor = actorFromUserId(userIdOrActor);
+    const cart = await getOrCreateCart(actor);
     const populatedCart = await attachCartRelations(Cart.findById(cart._id));
 
     return await buildCartSummary(populatedCart);
@@ -38,9 +62,9 @@ export const getMyCart = async (userId) => {
   }
 };
 
-export const addItemToCart = async (userId, payload) => {
+export const addItemToCart = async (userIdOrActor, payload) => {
   try {
-    ensureValidObjectId(userId, "user");
+    const actor = actorFromUserId(userIdOrActor);
     ensureValidObjectId(payload.productId, "product");
 
     const product = ensureActiveProduct(await Product.findById(payload.productId));
@@ -51,7 +75,7 @@ export const addItemToCart = async (userId, payload) => {
       `Variant '${payload.weight}' is not available for product '${product.name}'`
     );
 
-    const cart = await getOrCreateCart(userId);
+    const cart = await getOrCreateCart(actor);
     const existingItem = cart.items.find(
       (item) =>
         item.product.toString() === payload.productId &&
@@ -89,12 +113,12 @@ export const addItemToCart = async (userId, payload) => {
   }
 };
 
-export const updateCartItemQuantity = async (userId, itemId, payload) => {
+export const updateCartItemQuantity = async (userIdOrActor, itemId, payload) => {
   try {
-    ensureValidObjectId(userId, "user");
+    const actor = actorFromUserId(userIdOrActor);
     ensureValidObjectId(itemId, "cart item");
 
-    const cart = ensureFound(await getOrCreateCart(userId), "Cart not found");
+    const cart = ensureFound(await getOrCreateCart(actor), "Cart not found");
     const item = ensureFound(cart.items.id(itemId), "Cart item not found");
 
     const product = ensureActiveProduct(await Product.findById(item.product));
@@ -127,12 +151,12 @@ export const updateCartItemQuantity = async (userId, itemId, payload) => {
   }
 };
 
-export const removeCartItem = async (userId, itemId) => {
+export const removeCartItem = async (userIdOrActor, itemId) => {
   try {
-    ensureValidObjectId(userId, "user");
+    const actor = actorFromUserId(userIdOrActor);
     ensureValidObjectId(itemId, "cart item");
 
-    const cart = ensureFound(await getOrCreateCart(userId), "Cart not found");
+    const cart = ensureFound(await getOrCreateCart(actor), "Cart not found");
     const item = ensureFound(cart.items.id(itemId), "Cart item not found");
 
     item.deleteOne();
@@ -145,11 +169,10 @@ export const removeCartItem = async (userId, itemId) => {
   }
 };
 
-export const clearCart = async (userId) => {
+export const clearCart = async (userIdOrActor) => {
   try {
-    ensureValidObjectId(userId, "user");
-
-    const cart = await getOrCreateCart(userId);
+    const actor = actorFromUserId(userIdOrActor);
+    const cart = await getOrCreateCart(actor);
     cart.items = [];
     await cart.save();
 

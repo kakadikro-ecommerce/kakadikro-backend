@@ -47,9 +47,11 @@ const cartSchema = new mongoose.Schema(
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
-      unique: true,
       index: true,
+    },
+    guestTokenHash: {
+      type: String,
+      select: false,
     },
     items: {
       type: [cartItemSchema],
@@ -76,6 +78,52 @@ cartSchema.virtual("cartOrders", {
   foreignField: "user",
 });
 
+cartSchema.index(
+  { user: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { user: { $type: "objectId" } },
+    name: "user_1",
+  }
+);
+
+cartSchema.index(
+  { guestTokenHash: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { guestTokenHash: { $type: "string" } },
+    name: "guestTokenHash_1",
+  }
+);
+
 const Cart = mongoose.model("Cart", cartSchema);
+
+export const ensureCartIndexes = async () => {
+  const indexes = await Cart.collection.indexes();
+
+  for (const index of indexes) {
+    const isUserIndex = index.key?.user === 1 && index.name !== "_id_";
+    if (isUserIndex && !index.partialFilterExpression) {
+      await Cart.collection.dropIndex(index.name);
+    }
+  }
+
+  await Cart.collection.createIndex(
+    { user: 1 },
+    {
+      unique: true,
+      partialFilterExpression: { user: { $type: "objectId" } },
+      name: "user_1",
+    }
+  );
+  await Cart.collection.createIndex(
+    { guestTokenHash: 1 },
+    {
+      unique: true,
+      partialFilterExpression: { guestTokenHash: { $type: "string" } },
+      name: "guestTokenHash_1",
+    }
+  );
+};
 
 export default Cart;

@@ -6,19 +6,21 @@ import {
   addCartItemValidation,
   updateCartItemValidation,
 } from "./cart.validation.js";
-import { protect } from "../../middlewares/auth.js";
-import { authorizeRoles } from "../../middlewares/role-access.js";
+import { optionalProtect } from "../../middlewares/optional-auth.js";
+import { attachCartActor } from "../../middlewares/guest-cart.js";
 
 const router = express.Router();
 
-router.get("/", protect, authorizeRoles("user"), asyncHandler(cartController.getMyCart));
+router.use(optionalProtect, attachCartActor);
 
-router.post("/items", protect, authorizeRoles("user"), validateRequest(addCartItemValidation), asyncHandler(cartController.addItemToCart));
+router.get("/", asyncHandler(cartController.getMyCart));
 
-router.put("/items/:itemId", protect, authorizeRoles("user"), validateRequest(updateCartItemValidation), asyncHandler(cartController.updateCartItemQuantity));
+router.post("/items", validateRequest(addCartItemValidation), asyncHandler(cartController.addItemToCart));
 
-router.delete("/items/:itemId", protect, authorizeRoles("user"), asyncHandler(cartController.removeCartItem));
+router.put("/items/:itemId", validateRequest(updateCartItemValidation), asyncHandler(cartController.updateCartItemQuantity));
 
-router.delete("/", protect, authorizeRoles("user"), asyncHandler(cartController.clearCart));
+router.delete("/items/:itemId", asyncHandler(cartController.removeCartItem));
+
+router.delete("/", asyncHandler(cartController.clearCart));
 
 export default router;

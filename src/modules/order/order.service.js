@@ -31,6 +31,8 @@ import {
   rethrowPaymentServiceError,
 } from "../payment/payment.helpers.js";
 import { recordCodPaymentReceived } from "../payment/payment.service.js";
+import { hashGuestToken, isGuestToken } from "../checkout/guest-token.js";
+import { getShippingConfig, isServiceablePincode } from "../checkout/shipping-info.js";
 
 const STATUS_FLOW = {
   pending: ["confirmed"],
@@ -101,7 +103,23 @@ export const createOrder = async (userId, payload) => {
       return buildOrderItem(product, variant, item.quantity);
     });
 
-    const totals = calculateTotals(orderItems, payload);
+    const shippingConfig = getShippingConfig();
+    const destinationCountry = payload.shippingAddress?.country || "India";
+    if (
+      !isServiceablePincode(
+        payload.shippingAddress?.postalCode,
+        destinationCountry,
+        shippingConfig
+      )
+    ) {
+      throw badRequest("Delivery is not available for this address");
+    }
+
+    const totals = calculateTotals(orderItems, {
+      shippingAmount: shippingConfig.feePaise / 100,
+      taxAmount: 0,
+      discountAmount: 0,
+    });
 
     const shippingAddress = {
       ...payload.shippingAddress,
@@ -288,10 +306,11 @@ export const trackOrder = async (orderId, requester) => {
 
     const orderData = order.toObject ? order.toObject() : order;
 
-    if (orderData.shipment?.trackingId) {
+    if (orderData.shipment?.trackingId || orderData.shipment?.courierName) {
       orderData.tracking = {
-        trackingId: orderData.shipment.trackingId,
-        courierName: orderData.shipment.courierName,
+        trackingId: orderData.shipment.trackingId || "",
+        courierName: orderData.shipment.courierName || "",
+        trackingUrl: orderData.shipment.trackingUrl || "",
       };
     }
 
@@ -311,7 +330,7 @@ export const updateMyOrder = async (orderId, userId, payload) => {
       "Order not found"
     );
 
-    if (order.user.toString() !== userId) {
+    if (!order.user || order.user.toString() !== userId) {
       throw forbidden("You are not allowed to update this order");
     }
 
@@ -361,6 +380,11 @@ export const updateOrderStatus = async (orderId, payload) => {
       payload.courier ??
       "";
 
+    const rawTrackingUrl =
+      payload.trackingUrl ??
+      payload.shipment?.trackingUrl ??
+      "";
+
     if (!order.shipment) {
       order.shipment = {};
     }
@@ -387,6 +411,10 @@ export const updateOrderStatus = async (orderId, payload) => {
 
     if (hasCourierName) {
       order.shipment.courierName = courierName;
+    }
+
+    if (typeof rawTrackingUrl === "string" && rawTrackingUrl.trim()) {
+      order.shipment.trackingUrl = rawTrackingUrl.trim();
     }
 
     if (requestedStatus) {
@@ -575,7 +603,7 @@ export const cancelOrder = async (orderId, userId) => {
     );
     const inventoryAdjustments = [];
 
-    if (order.user.toString() !== userId) {
+    if (!order.user || order.user.toString() !== userId) {
       throw forbidden("You are not allowed to cancel this order");
     }
 
@@ -682,6 +710,98 @@ export const cancelOrder = async (orderId, userId) => {
     );
   } catch (error) {
     rethrowOrderServiceError(error, "Failed to cancel order");
+  }
+};
+
+const toGuestOrderView = async (order) => {
+  const withPayment = await attachPaymentSummaries(order);
+  const normalized = await normalizeOrderImages(withPayment);
+  const shipment = normalized.shipment || {};
+
+  return {
+    id: normalized._id,
+    orderStatus: normalized.orderStatus,
+    paymentStatus: normalized.paymentStatus,
+    paymentMethod: normalized.paymentMethod,
+    phoneVerified: Boolean(normalized.phoneVerified),
+    items: normalized.items,
+    shippingAddress: normalized.shippingAddress,
+    shipment: {
+      courierName: shipment.courierName || "",
+      trackingId: shipment.trackingId || "",
+      trackingUrl: shipment.trackingUrl || "",
+      dispatchedAt: shipment.dispatchedAt || null,
+      deliveredAt: shipment.deliveredAt || null,
+    },
+    subtotalAmount: normalized.subtotalAmount,
+    shippingAmount: normalized.shippingAmount,
+    totalAmount: normalized.totalAmount,
+    placedAt: normalized.placedAt,
+    paidAt: normalized.paidAt,
+    payment: normalized.payment
+      ? {
+          status: normalized.payment.status,
+          amount: normalized.payment.amount,
+        }
+      : null,
+  };
+};
+
+export const getGuestOrder = async (guestOrderToken) => {
+  try {
+    if (!isGuestToken(guestOrderToken)) {
+      throw forbidden("Order access is not valid");
+    }
+
+    const order = ensureFound(
+      await Order.findOne({
+        guestAccessTokenHash: hashGuestToken(guestOrderToken),
+        isActive: true,
+      }),
+      "Order not found"
+    );
+
+    return toGuestOrderView(order);
+  } catch (error) {
+    rethrowOrderServiceError(error, "Failed to fetch order");
+  }
+};
+
+export const updateShipment = async (orderId, payload) => {
+  try {
+    ensureValidObjectId(orderId, "order");
+
+    if (payload?.paymentStatus || payload?.orderStatus) {
+      throw badRequest("Shipment updates cannot change payment or order status");
+    }
+
+    const order = ensureFound(
+      await Order.findOne({ _id: orderId, isActive: true }),
+      "Order not found"
+    );
+
+    const previousPaymentStatus = order.paymentStatus;
+
+    if (!order.shipment) {
+      order.shipment = {};
+    }
+
+    order.shipment.courierName = String(payload.courierName || "").trim();
+    order.shipment.trackingId = String(payload.trackingNumber || payload.trackingId || "").trim();
+    order.shipment.trackingUrl = String(payload.trackingUrl || "").trim();
+
+    if (!order.shipment.dispatchedAt && order.orderStatus === "dispatched") {
+      order.shipment.dispatchedAt = new Date();
+    }
+
+    order.paymentStatus = previousPaymentStatus;
+    await order.save();
+
+    return await normalizeOrderImages(
+      await attachOrderRelations(Order.findById(order._id))
+    );
+  } catch (error) {
+    rethrowOrderServiceError(error, "Failed to update shipment");
   }
 };
 

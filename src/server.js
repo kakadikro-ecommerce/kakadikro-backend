@@ -37,6 +37,9 @@ const corsAllowedHeaders = [
   "Accept",
   "Origin",
   "X-Requested-With",
+  "X-Guest-Cart-Token",
+  "X-Guest-Order-Token",
+  "Idempotency-Key",
 ];
 const corsAllowedMethods = [
   "GET",
@@ -87,6 +90,10 @@ app.use((req, res, next) => {
       "Access-Control-Allow-Headers",
       req.headers["access-control-request-headers"] ||
         corsAllowedHeaders.join(", ")
+    );
+    res.setHeader(
+      "Access-Control-Expose-Headers",
+      "X-Guest-Cart-Token, X-Guest-Order-Token"
     );
     res.setHeader("Access-Control-Max-Age", "86400");
     res.setHeader("Vary", "Origin");

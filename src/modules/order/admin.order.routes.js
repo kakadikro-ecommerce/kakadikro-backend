@@ -5,11 +5,20 @@ import asyncHandler from "../../shared/http/async-handler.js";
 import {
   updateOrderActiveStatusValidation,
   updateOrderStatusValidation,
+  updateShipmentValidation,
 } from "./order.validation.js";
 import { protect } from "../../middlewares/auth.js";
 import { authorizeRoles } from "../../middlewares/role-access.js";
 
 const router = express.Router();
+
+router.put(
+  "/shipment/:id",
+  validateRequest(updateShipmentValidation),
+  protect,
+  authorizeRoles("admin", "super_admin"),
+  asyncHandler(orderController.updateShipment)
+);
 
 router.get("/", protect, authorizeRoles("admin", "super_admin"), asyncHandler(orderController.getAllOrders));
 

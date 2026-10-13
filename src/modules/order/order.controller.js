@@ -93,6 +93,35 @@ export const getOrderById = async (req, res, next) => {
   }
 };
 
+export const getGuestOrder = async (req, res, next) => {
+  try {
+    const token = String(req.get("x-guest-order-token") || "").trim();
+    const order = await orderService.getGuestOrder(token);
+
+    return res.status(200).json({
+      success: true,
+      message: "Order fetched successfully",
+      data: order,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const updateShipment = async (req, res, next) => {
+  try {
+    const order = await orderService.updateShipment(req.params.id, req.body);
+
+    return res.status(200).json({
+      success: true,
+      message: "Shipment updated successfully",
+      data: order,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 export const updateOrderStatus = async (req, res, next) => {
   try {
     const order = await orderService.updateOrderStatus(req.params.id, req.body);
