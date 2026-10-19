@@ -1,5 +1,4 @@
 import "dotenv/config";
-import { getPresignedGetUrl, getPresignedGetUrls } from "../upload/presign.js";
 
 const normalizeBaseUrl = (value = "") => value.trim().replace(/\/+$/, "");
 
@@ -94,12 +93,16 @@ export const extractImageKey = (value) => {
   }
 };
 
-export const getImageUrl = async (key) => {
-  if (!key || typeof key !== "string") {
-    return null;
-  }
+const encodeKeyPath = (key) =>
+  key
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
 
-  const extractedKey = extractImageKey(key);
+export const getPublicMediaBaseUrl = () => CLOUDFRONT_BASE_URL || S3_BASE_URL;
+
+export const getPublicMediaUrl = (value) => {
+  const extractedKey = extractImageKey(value);
 
   if (!extractedKey) {
     return null;
@@ -109,8 +112,15 @@ export const getImageUrl = async (key) => {
     return extractedKey;
   }
 
-  return getPresignedGetUrl(extractedKey);
+  const base = getPublicMediaBaseUrl();
+  if (!base) {
+    return null;
+  }
+
+  return `${base}/${encodeKeyPath(extractedKey)}`;
 };
+
+export const getImageUrl = async (key) => getPublicMediaUrl(key);
 
 export const normalizeImageRecordForStorage = (image = {}) => {
   const rawValue =
@@ -209,7 +219,15 @@ export const attachPresignedUrlsToProducts = async (products = []) => {
     collectSignableKey(product?.video?.url, keys);
   }
 
-  const urlMap = await getPresignedGetUrls(keys);
+  const urlMap = new Map();
+  for (const key of keys) {
+    const storageKey = extractImageKey(key);
+    if (!storageKey || isFullUrl(storageKey)) {
+      continue;
+    }
+
+    urlMap.set(storageKey, getPublicMediaUrl(storageKey));
+  }
 
   for (const product of plainProducts) {
     if (Array.isArray(product?.images)) {

@@ -1,7 +1,6 @@
 import AppError from "../../shared/errors/app-error.js";
 import { badRequest, createHttpError, forbidden } from "../../shared/errors/http-error.js";
-import { extractImageKey, isFullUrl } from "../../shared/utils/image.js";
-import { getPresignedGetUrls } from "../../shared/upload/presign.js";
+import { extractImageKey, getPublicMediaUrl, isFullUrl } from "../../shared/utils/image.js";
 
 const getAttributeValue = (attributes, key) => {
   if (!attributes) {
@@ -98,8 +97,6 @@ export const normalizeOrderImages = async (order) => {
     // make historical orders show a different product's photo.
     extractImageKey(item.productImage || item.product?.images?.[0]?.url || "")
   );
-  const imageUrlMap = await getPresignedGetUrls(imageKeys);
-
   orderData.items = orderData.items.map((item, index) => {
     const imageKey = imageKeys[index];
     let productImage = "";
@@ -107,7 +104,7 @@ export const normalizeOrderImages = async (order) => {
     if (imageKey) {
       productImage = isFullUrl(imageKey)
         ? imageKey
-        : imageUrlMap.get(imageKey) || "";
+        : getPublicMediaUrl(imageKey) || "";
     }
 
     return {

@@ -4,8 +4,7 @@ import {
   createHttpError,
   ensureFound,
 } from "../../shared/errors/http-error.js";
-import { extractImageKey, isFullUrl } from "../../shared/utils/image.js";
-import { getPresignedGetUrls } from "../../shared/upload/presign.js";
+import { extractImageKey, getPublicMediaUrl, isFullUrl } from "../../shared/utils/image.js";
 
 const getAttributeValue = (attributes, key) => {
   if (!attributes) {
@@ -46,8 +45,6 @@ export const buildCartSummary = async (cart) => {
     // Prefer the cart-line snapshot so line items stay tied to what was added.
     extractImageKey(item.productImage || item.product?.images?.[0]?.url || "")
   );
-  const imageUrlMap = await getPresignedGetUrls(imageKeys);
-
   const items = cart.items.map((item, index) => {
     const product = item.product;
     const productId = product?._id || item.product;
@@ -64,7 +61,7 @@ export const buildCartSummary = async (cart) => {
     if (imageKey) {
       productImage = isFullUrl(imageKey)
         ? imageKey
-        : imageUrlMap.get(imageKey) || "";
+        : getPublicMediaUrl(imageKey) || "";
     }
 
     return {

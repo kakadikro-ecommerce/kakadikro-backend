@@ -8,7 +8,7 @@ import {
   ensureValidObjectId,
   forbidden,
 } from "../../shared/errors/http-error.js";
-import { isFullUrl } from "../../shared/utils/image.js";
+import { getPublicMediaUrl } from "../../shared/utils/image.js";
 import {
   buildOrderItem,
   calculateTotals,
@@ -37,31 +37,11 @@ export const rejectClientPricing = (payload = {}) => {
   }
 };
 
-const publicImageUrl = (value) => {
-  if (!value) {
-    return "";
-  }
-
-  if (isFullUrl(value)) {
-    return value;
-  }
-
-  const base = String(process.env.CLOUDFRONT_BASE_URL || process.env.S3_BASE_URL || "")
-    .trim()
-    .replace(/\/+$/, "");
-
-  if (!base) {
-    return "";
-  }
-
-  return `${base}/${String(value).replace(/^\/+/, "")}`;
-};
-
 const buildLineItems = (orderItems, productsById) =>
   orderItems.map((item) => {
     const product = productsById.get(String(item.product));
     const pricePaise = Math.round(Number(item.unitPrice) * 100);
-    const imageUrl = publicImageUrl(item.productImage || product?.images?.[0]?.url || "");
+    const imageUrl = getPublicMediaUrl(item.productImage || product?.images?.[0]?.url || "") || "";
 
     return {
       sku: String(item.product),
