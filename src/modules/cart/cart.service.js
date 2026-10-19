@@ -169,6 +169,39 @@ export const removeCartItem = async (userIdOrActor, itemId) => {
   }
 };
 
+export const mergeGuestCart = async (userId, guestTokenHash) => {
+  if (!userId || !guestTokenHash) {
+    return null;
+  }
+
+  const guestCart = await Cart.findOne({ guestTokenHash }).select("+guestTokenHash");
+  if (!guestCart || guestCart.items.length === 0) {
+    return null;
+  }
+
+  const userCart = await getOrCreateCart({ userId });
+
+  for (const item of guestCart.items) {
+    const existingItem = userCart.items.find(
+      (entry) =>
+        entry.product.toString() === item.product.toString() && entry.weight === item.weight
+    );
+
+    if (existingItem) {
+      existingItem.quantity += item.quantity;
+    } else {
+      const snapshot = item.toObject();
+      delete snapshot._id;
+      userCart.items.push(snapshot);
+    }
+  }
+
+  guestCart.items = [];
+  await guestCart.save();
+  await userCart.save();
+  return userCart;
+};
+
 export const clearCart = async (userIdOrActor) => {
   try {
     const actor = actorFromUserId(userIdOrActor);

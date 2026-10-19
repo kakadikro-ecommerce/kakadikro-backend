@@ -116,32 +116,62 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+const s3Storage = multerS3({
+  s3,
+  bucket: process.env.AWS_S3_BUCKET_NAME,
+  contentType: multerS3.AUTO_CONTENT_TYPE,
+  metadata: (req, file, cb) => {
+    try {
+      return cb(null, {
+        fieldName: file.fieldname,
+        originalName: file.originalname,
+      });
+    } catch (error) {
+      return cb(error);
+    }
+  },
+  key: (req, file, cb) => {
+    try {
+      return cb(null, createFileKey(file));
+    } catch (error) {
+      return cb(error);
+    }
+  },
+});
+
 export const upload = multer({
-  storage: multerS3({
-    s3,
-    bucket: process.env.AWS_S3_BUCKET_NAME,
-    contentType: multerS3.AUTO_CONTENT_TYPE,
-    metadata: (req, file, cb) => {
-      try {
-        return cb(null, {
-          fieldName: file.fieldname,
-          originalName: file.originalname,
-        });
-      } catch (error) {
-        return cb(error);
-      }
-    },
-    key: (req, file, cb) => {
-      try {
-        return cb(null, createFileKey(file));
-      } catch (error) {
-        return cb(error);
-      }
-    },
-  }),
+  storage: s3Storage,
   limits: {
     // Video ceiling. Images are rejected above 5MB after the upload.
     fileSize: 50 * 1024 * 1024,
   },
   fileFilter,
+});
+
+const brandVideoFileFilter = (req, file, cb) => {
+  try {
+    if (file.fieldname !== "video") {
+      return cb(new AppError("Upload the reel on the video field.", 400));
+    }
+
+    if (!videoMimeTypes.includes(file.mimetype)) {
+      return cb(
+        new AppError("Invalid file type. Only MP4 video is allowed", 400)
+      );
+    }
+
+    return cb(null, true);
+  } catch (error) {
+    return cb(error);
+  }
+};
+
+export const BRAND_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
+
+export const brandVideoUpload = multer({
+  storage: s3Storage,
+  limits: {
+    fileSize: BRAND_VIDEO_MAX_BYTES,
+  },
+  fileFilter: brandVideoFileFilter,
 });

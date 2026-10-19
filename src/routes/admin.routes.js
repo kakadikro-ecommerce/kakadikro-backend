@@ -6,6 +6,7 @@ import adminProductRoutes from "../modules/product/admin.product.routes.js";
 import adminAuthRoutes from "../modules/admin/auth.routes.js";
 import adminUserRoutes from "../modules/admin/users.routes.js";
 import adminPaymentRoutes from "../modules/payment/admin.payment.routes.js";
+import adminBrandVideoRoutes from "../modules/brandVideo/admin.brandVideo.routes.js";
 
 const router = express.Router();
 
@@ -16,5 +17,6 @@ router.use("/orders", adminOrderRoutes);
 router.use("/contacts", adminContactRoutes);
 router.use("/users", adminUserRoutes);
 router.use("/payments", adminPaymentRoutes);
+router.use("/brand-videos", adminBrandVideoRoutes);
 
 export default router;

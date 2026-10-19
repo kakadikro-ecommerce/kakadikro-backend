@@ -83,6 +83,47 @@ const loadCart = async (actor) => {
   return Cart.findOne(filter).select("+guestTokenHash");
 };
 
+const resumeCheckoutForKey = async (actor, idempotencyKey) => {
+  const existing = await Order.findOne({ idempotencyKey, isActive: true }).select(
+    "+guestAccessTokenHash +guestTokenHash +idempotencyKey"
+  );
+
+  if (!existing || existing.paymentStatus === "paid" || existing.paymentStatus === "refunded") {
+    return null;
+  }
+
+  if (actor.userId && (!existing.user || existing.user.toString() !== actor.userId)) {
+    await Order.updateOne(
+      { _id: existing._id },
+      { $set: { user: actor.userId, isGuest: false } }
+    );
+    await Payment.updateOne({ orderId: existing._id }, { $set: { userId: actor.userId } });
+    existing.user = actor.userId;
+    existing.isGuest = false;
+  }
+
+  const sameGuest =
+    !actor.userId &&
+    existing.guestTokenHash &&
+    existing.guestTokenHash === actor.guestTokenHash;
+  const sameUser = actor.userId && existing.user && existing.user.toString() === actor.userId;
+
+  if (!sameGuest && !sameUser) {
+    return null;
+  }
+
+  const payment = await Payment.findOne({ orderId: existing._id }).select("+guestTokenHash");
+  if (!payment?.razorpayOrderId) {
+    return null;
+  }
+
+  return checkoutResponse({
+    order: existing,
+    payment,
+    guestOrderToken: "",
+  });
+};
+
 const findIdempotentOrder = async (actor, idempotencyKey) => {
   if (!idempotencyKey) {
     return null;
@@ -119,10 +160,10 @@ const checkoutResponse = async ({ order, payment, guestOrderToken }) => {
 };
 
 export const startMagicCheckout = async (actor, payload = {}, idempotencyKey = "") => {
+  const key = String(idempotencyKey || "").trim();
+
   try {
     rejectClientPricing(payload);
-
-    const key = String(idempotencyKey || "").trim();
     if (key && !/^[A-Za-z0-9_-]{8,80}$/.test(key)) {
       throw badRequest("Idempotency key is invalid");
     }
@@ -214,7 +255,6 @@ export const startMagicCheckout = async (actor, payload = {}, idempotencyKey = "
       throw badRequest("Order amount is invalid for payment");
     }
 
-    const savedItems = cart.items.map((item) => item.toObject());
     let paymentOrder;
     let payment;
 
@@ -242,20 +282,18 @@ export const startMagicCheckout = async (actor, payload = {}, idempotencyKey = "
         status: "pending",
       });
     } catch (error) {
-      cart.items = savedItems;
-      await cart.save();
       await Payment.deleteOne({ orderId: order._id });
       await Order.deleteOne({ _id: order._id });
       throw error;
     }
 
-    cart.items = [];
-    await cart.save();
-
     return checkoutResponse({ order, payment, guestOrderToken });
   } catch (error) {
-    if (error?.code === 11000) {
-      throw badRequest("This checkout was already started. Retry with the same idempotency key.");
+    if (error?.code === 11000 && key) {
+      const resumed = await resumeCheckoutForKey(actor, key);
+      if (resumed) {
+        return resumed;
+      }
     }
 
     rethrowOrderServiceError(error, "Failed to start checkout");

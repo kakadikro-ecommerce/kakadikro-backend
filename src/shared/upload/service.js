@@ -1,5 +1,6 @@
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { s3, upload, validateS3Env } from "../../config/s3.js";
+import multer from "multer";
+import { brandVideoUpload, s3, upload, validateS3Env } from "../../config/s3.js";
 import AppError from "../errors/app-error.js";
 
 const deleteFromS3 = async (key) => {
@@ -84,6 +85,26 @@ export const uploadProductMediaFromRequest = async (req, res) => {
   }
 
   return { images, video };
+};
+
+export const uploadBrandVideoFromRequest = async (req, res, { required = true } = {}) => {
+  validateS3Env();
+
+  try {
+    await runUploadMiddleware(req, res, brandVideoUpload.single("video"));
+  } catch (error) {
+    if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+      throw new AppError("Video must be an MP4 of 100MB or smaller", 400);
+    }
+
+    throw error;
+  }
+
+  if (required && !req.file) {
+    throw new AppError("Please upload an MP4 video", 400);
+  }
+
+  return req.file || null;
 };
 
 export const deleteFilesFromS3 = async (keys = []) => {

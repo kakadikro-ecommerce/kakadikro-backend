@@ -28,18 +28,26 @@ export const getShippingConfig = (env = process.env) => {
     codEnabled,
     codFeePaise: codEnabled ? parseNonNegativeInt(env.SHIPPING_COD_FEE_PAISE, 0) : 0,
     blockedPincodes: parseList(env.SHIPPING_BLOCKED_PINCODES),
-    allowedPincodes: parseList(env.SHIPPING_SERVICEABLE_PINCODES),
   };
 };
+
+const INDIA_COUNTRIES = new Set(["IN", "IND", "INDIA", "BHARAT"]);
 
 const normalizeCountry = (country) => String(country || "").trim().toUpperCase();
 
 export const isDomesticIndia = (country) => {
   const value = normalizeCountry(country);
-  return value === "IN" || value === "INDIA";
+  if (!value) {
+    return true;
+  }
+
+  return INDIA_COUNTRIES.has(value);
 };
 
-const normalizePincode = (zipcode) => String(zipcode || "").trim();
+const normalizePincode = (zipcode) => {
+  const digits = String(zipcode ?? "").replace(/\D/g, "");
+  return digits.length > 6 ? digits.slice(0, 6) : digits;
+};
 
 export const isServiceablePincode = (zipcode, country, config) => {
   if (!isDomesticIndia(country)) {
@@ -55,17 +63,16 @@ export const isServiceablePincode = (zipcode, country, config) => {
     return false;
   }
 
-  if (config.allowedPincodes.length > 0 && !config.allowedPincodes.includes(pincode)) {
-    return false;
-  }
-
   return true;
 };
+
+const methodDescription = (config) =>
+  config.methodDescription || "Delivery across India";
 
 const unavailableMethod = (config) => ({
   id: config.methodId,
   name: config.methodName,
-  description: config.methodDescription,
+  description: methodDescription(config),
   serviceable: false,
   shipping_fee: 0,
   cod: false,
@@ -75,25 +82,112 @@ const unavailableMethod = (config) => ({
 const availableMethod = (config) => ({
   id: config.methodId,
   name: config.methodName,
-  description: config.methodDescription,
+  description: methodDescription(config),
   serviceable: true,
   shipping_fee: config.feePaise,
   cod: config.codEnabled,
   cod_fee: config.codEnabled ? config.codFeePaise : 0,
 });
 
+const PINCODE_STATE = [
+  ["11", "DL"],
+  ["12", "HR"],
+  ["13", "HR"],
+  ["14", "PB"],
+  ["15", "PB"],
+  ["16", "CH"],
+  ["17", "HP"],
+  ["18", "JK"],
+  ["19", "JK"],
+  ["20", "UP"],
+  ["21", "UP"],
+  ["22", "UP"],
+  ["23", "UP"],
+  ["24", "UP"],
+  ["25", "UP"],
+  ["26", "UP"],
+  ["27", "UP"],
+  ["28", "UP"],
+  ["30", "RJ"],
+  ["31", "RJ"],
+  ["32", "RJ"],
+  ["33", "RJ"],
+  ["34", "RJ"],
+  ["36", "GJ"],
+  ["37", "GJ"],
+  ["38", "GJ"],
+  ["39", "GJ"],
+  ["40", "MH"],
+  ["41", "MH"],
+  ["42", "MH"],
+  ["43", "MH"],
+  ["44", "MH"],
+  ["45", "MP"],
+  ["46", "MP"],
+  ["47", "MP"],
+  ["48", "MP"],
+  ["49", "CG"],
+  ["50", "TG"],
+  ["51", "AP"],
+  ["52", "AP"],
+  ["53", "AP"],
+  ["56", "KA"],
+  ["57", "KA"],
+  ["58", "KA"],
+  ["59", "KA"],
+  ["60", "TN"],
+  ["61", "TN"],
+  ["62", "TN"],
+  ["63", "TN"],
+  ["64", "TN"],
+  ["67", "KL"],
+  ["68", "KL"],
+  ["69", "KL"],
+  ["70", "WB"],
+  ["71", "WB"],
+  ["72", "WB"],
+  ["73", "WB"],
+  ["74", "WB"],
+  ["75", "OD"],
+  ["76", "OD"],
+  ["77", "OD"],
+  ["78", "AS"],
+  ["79", "AS"],
+  ["80", "BR"],
+  ["81", "BR"],
+  ["82", "BR"],
+  ["83", "BR"],
+  ["84", "BR"],
+  ["85", "BR"],
+];
+
+const stateCodeForPincode = (zipcode) => {
+  const prefix = normalizePincode(zipcode).slice(0, 2);
+  const match = PINCODE_STATE.find(([code]) => code === prefix);
+  return match ? match[1] : "";
+};
+
+const addressCountry = (address) =>
+  address?.country || address?.country_code || address?.countryCode || "";
+
 export const buildShippingInfoResponse = (addresses, env = process.env) => {
   const config = getShippingConfig(env);
 
   return {
-    addresses: addresses.map((address) => {
-      const serviceable = isServiceablePincode(address.zipcode, address.country, config);
+    addresses: addresses.map((address, index) => {
+      const country = addressCountry(address);
+      const serviceable = isServiceablePincode(address.zipcode, country, config);
+      const stateCode =
+        String(address.state_code || address.stateCode || "").trim().toUpperCase() ||
+        stateCodeForPincode(address.zipcode);
 
       return {
-        id: String(address.id),
+        id: address.id === undefined || address.id === null || address.id === ""
+          ? String(index)
+          : String(address.id),
         zipcode: normalizePincode(address.zipcode),
-        ...(address.state_code ? { state_code: String(address.state_code).trim() } : {}),
-        country: isDomesticIndia(address.country) ? "IN" : normalizeCountry(address.country).slice(0, 2),
+        ...(stateCode ? { state_code: stateCode } : {}),
+        country: "IN",
         shipping_methods: [serviceable ? availableMethod(config) : unavailableMethod(config)],
       };
     }),

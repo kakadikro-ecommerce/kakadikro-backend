@@ -11,7 +11,7 @@ import { protect } from "../../middlewares/auth.js";
 import { authorizeRoles } from "../../middlewares/role-access.js";
 import { optionalProtect } from "../../middlewares/optional-auth.js";
 import { attachCartActor } from "../../middlewares/guest-cart.js";
-import { magicCheckoutValidation, shippingInfoValidation } from "../checkout/checkout.validation.js";
+import { magicCheckoutValidation } from "../checkout/checkout.validation.js";
 import * as checkoutController from "../checkout/checkout.controller.js";
 import { rejectClientPricing } from "../checkout/magic-checkout.service.js";
 
@@ -47,7 +47,6 @@ const shippingLimiter = rateLimit({
 router.post(
   "/magic/shipping-info",
   shippingLimiter,
-  validateRequest(shippingInfoValidation),
   asyncHandler(checkoutController.shippingInfo)
 );
 
