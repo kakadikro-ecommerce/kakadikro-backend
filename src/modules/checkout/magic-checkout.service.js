@@ -216,7 +216,8 @@ export const startMagicCheckout = async (actor, payload = {}, idempotencyKey = "
         phone: "",
         country: "India",
       },
-      paymentMethod: "upi",
+      // Placeholder until Razorpay confirms the real method (card / upi / cod).
+      paymentMethod: "card",
       paymentStatus: "pending",
       orderStatus: "pending",
       ...totals,

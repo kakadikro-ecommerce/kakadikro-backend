@@ -35,6 +35,35 @@ export const rethrowPaymentServiceError = (error, message) => {
 
 export const isOnlineOrderPayment = (paymentMethod) => paymentMethod !== "cod";
 
+/**
+ * Map Razorpay payment.method onto our Order.paymentMethod enum (cod | card | upi).
+ * Unknown online methods fall back to "card" so we never leave a wrong hardcoded UPI.
+ */
+export const mapRazorpayPaymentMethod = (razorpayMethod) => {
+  const method = String(razorpayMethod || "")
+    .trim()
+    .toLowerCase();
+
+  if (!method) {
+    return "";
+  }
+
+  if (method === "cod") {
+    return "cod";
+  }
+
+  if (method === "upi") {
+    return "upi";
+  }
+
+  if (method === "card") {
+    return "card";
+  }
+
+  // netbanking, wallet, emi, paylater, etc. — treat as online card-class for our enum
+  return "card";
+};
+
 export const SUPPORTED_WEBHOOK_EVENTS = [
   "payment.authorized",
   "payment.failed",

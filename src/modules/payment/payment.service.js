@@ -19,6 +19,7 @@ import {
 import {
   getRazorpayInstance,
   isOnlineOrderPayment,
+  mapRazorpayPaymentMethod,
   rethrowPaymentServiceError,
   SUPPORTED_WEBHOOK_EVENTS,
 } from "./payment.helpers.js";
@@ -278,8 +279,9 @@ const applySuccessfulPayment = async ({
     applyCapturedAmount(order, payment, paymentEntity);
     applyCustomerToPayment(payment, order, paymentEntity);
 
-    if (String(paymentEntity?.method || "").toLowerCase() === "cod") {
-      order.paymentMethod = "cod";
+    const resolvedMethod = mapRazorpayPaymentMethod(paymentEntity?.method);
+    if (resolvedMethod) {
+      order.paymentMethod = resolvedMethod;
     }
 
     if (shouldMarkOrderPaid(paymentEntity)) {
@@ -593,8 +595,12 @@ export const verifyPayment = async (userId, payload, guestOrderToken = "") => {
     applyClientAddress(order, payload.shippingAddress);
     applyCustomerToPayment(payment, order, remotePayment);
 
+    const resolvedMethod = mapRazorpayPaymentMethod(remotePayment?.method);
+    if (resolvedMethod) {
+      order.paymentMethod = resolvedMethod;
+    }
+
     if (isCod) {
-      order.paymentMethod = "cod";
       await order.save();
     } else {
       await markOrderPaid(order);
