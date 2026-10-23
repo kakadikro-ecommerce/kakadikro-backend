@@ -6,7 +6,6 @@
   "main": "index.js",
   "scripts": {
     "test": "node --test",
-    "migrate": "node scripts/migrations/20261013-guest-checkout-schema.js",
     "start": "node src/server.js -p 5000",
     "dev": "nodemon src/server.js -p 5000"
   },

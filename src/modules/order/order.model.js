@@ -130,7 +130,6 @@ const orderSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       index: true,
-      immutable: true,
     },
     isGuest: {
       type: Boolean,
@@ -145,6 +144,7 @@ const orderSchema = new mongoose.Schema(
       email: {
         type: String,
         trim: true,
+        lowercase: true,
         default: "",
       },
       phone: {

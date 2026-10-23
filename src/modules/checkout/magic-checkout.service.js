@@ -18,6 +18,7 @@ import {
 } from "../order/order.helpers.js";
 import { getRazorpayInstance } from "../payment/payment.helpers.js";
 import { generateGuestToken, hashGuestToken, isGuestToken } from "./guest-token.js";
+import { normalizeCheckoutEmail } from "./claim-guest-checkout.js";
 
 const CLIENT_PRICE_FIELDS = [
   "unitPrice",
@@ -72,16 +73,8 @@ const resumeCheckoutForKey = async (actor, idempotencyKey) => {
     return null;
   }
 
-  if (actor.userId && (!existing.user || existing.user.toString() !== actor.userId)) {
-    await Order.updateOne(
-      { _id: existing._id },
-      { $set: { user: actor.userId, isGuest: false } }
-    );
-    await Payment.updateOne({ orderId: existing._id }, { $set: { userId: actor.userId } });
-    existing.user = actor.userId;
-    existing.isGuest = false;
-  }
-
+  // Only resume for the same guest session or the order owner.
+  // Do not reassign a guest checkout to an unrelated logged-in user.
   const sameGuest =
     !actor.userId &&
     existing.guestTokenHash &&
@@ -210,7 +203,7 @@ export const startMagicCheckout = async (actor, payload = {}, idempotencyKey = "
       isGuest: !actor.userId,
       guestContact: {
         name: customer.name || "",
-        email: customer.email || "",
+        email: normalizeCheckoutEmail(customer.email),
         phone: "",
       },
       phoneVerified: false,

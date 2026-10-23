@@ -27,6 +27,7 @@ import {
   shouldMarkOrderPaid,
 } from "../checkout/shipping-info.js";
 import { guestTokensMatch } from "../checkout/guest-token.js";
+import { normalizeCheckoutEmail } from "../checkout/claim-guest-checkout.js";
 
 const loadNormalizedOrder = async (orderId) => {
   const order = await attachOrderRelations(Order.findById(orderId));
@@ -102,7 +103,10 @@ const applyRazorpayShipping = async (order, razorpayOrderId) => {
     };
     order.guestContact = {
       name: address.fullName || order.guestContact?.name || "",
-      email: address.email || order.guestContact?.email || "",
+      email:
+        normalizeCheckoutEmail(address.email) ||
+        order.guestContact?.email ||
+        "",
       phone: verifiedPhone || order.guestContact?.phone || "",
     };
     order.markModified("shippingAddress");
@@ -113,7 +117,7 @@ const applyRazorpayShipping = async (order, razorpayOrderId) => {
 
 const applyVerifiedContact = (order, paymentEntity) => {
   const contact = String(paymentEntity?.contact || "").trim();
-  const email = String(paymentEntity?.email || "").trim();
+  const email = normalizeCheckoutEmail(paymentEntity?.email);
 
   if (!contact && !email) {
     return;
@@ -132,6 +136,40 @@ const applyVerifiedContact = (order, paymentEntity) => {
       phone: contact,
     };
     order.markModified("shippingAddress");
+  }
+};
+
+const applyCustomerToPayment = (payment, order, paymentEntity = null) => {
+  if (!payment) {
+    return;
+  }
+
+  const name = String(
+    order?.guestContact?.name ||
+      order?.shippingAddress?.fullName ||
+      paymentEntity?.card?.name ||
+      payment.customerName ||
+      ""
+  ).trim();
+  const email = normalizeCheckoutEmail(
+    paymentEntity?.email || order?.guestContact?.email || payment.customerEmail
+  );
+  const phone = String(
+    paymentEntity?.contact ||
+      order?.guestContact?.phone ||
+      order?.shippingAddress?.phone ||
+      payment.customerPhone ||
+      ""
+  ).trim();
+
+  if (name) {
+    payment.customerName = name;
+  }
+  if (email) {
+    payment.customerEmail = email;
+  }
+  if (phone) {
+    payment.customerPhone = phone;
   }
 };
 
@@ -238,6 +276,7 @@ const applySuccessfulPayment = async ({
     applyVerifiedContact(order, paymentEntity);
     await applyRazorpayShipping(order, razorpayOrderId);
     applyCapturedAmount(order, payment, paymentEntity);
+    applyCustomerToPayment(payment, order, paymentEntity);
 
     if (String(paymentEntity?.method || "").toLowerCase() === "cod") {
       order.paymentMethod = "cod";
@@ -552,6 +591,7 @@ export const verifyPayment = async (userId, payload, guestOrderToken = "") => {
     await applyRazorpayShipping(order, payload.razorpayOrderId);
     applyCapturedAmount(order, payment, remotePayment);
     applyClientAddress(order, payload.shippingAddress);
+    applyCustomerToPayment(payment, order, remotePayment);
 
     if (isCod) {
       order.paymentMethod = "cod";
@@ -597,7 +637,7 @@ export const getAllPaymentsAdmin = async (query = {}) => {
         .populate({
           path: "orderId",
           select:
-            "_id totalAmount paymentMethod paymentStatus orderStatus placedAt",
+            "_id totalAmount paymentMethod paymentStatus orderStatus placedAt guestContact shippingAddress",
         })
         .populate({
           path: "userId",
@@ -622,9 +662,24 @@ export const getAllPaymentsAdmin = async (query = {}) => {
 
     const totals = summaryAgg[0] || {};
 
+    const paymentsWithCustomer = payments.map((payment) => {
+      const obj = payment.toObject ? payment.toObject() : payment;
+      const guest = obj.orderId?.guestContact || {};
+      const shipping = obj.orderId?.shippingAddress || {};
+
+      return {
+        ...obj,
+        customerName:
+          obj.customerName || guest.name || shipping.fullName || "",
+        customerEmail: obj.customerEmail || guest.email || "",
+        customerPhone:
+          obj.customerPhone || guest.phone || shipping.phone || "",
+      };
+    });
+
     return {
       pagination: buildPaginationMeta({ total, page, limit }),
-      payments,
+      payments: paymentsWithCustomer,
       summary: {
         totalPayments: totals.totalPayments || 0,
         successfulCount: totals.successfulCount || 0,

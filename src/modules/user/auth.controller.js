@@ -1,9 +1,15 @@
 import { generateAccessToken } from "../../shared/auth/token.service.js";
 import { unauthorized } from "../../shared/errors/http-error.js";
-import { hashGuestToken, isGuestToken } from "../checkout/guest-token.js";
+import {
+  hashGuestToken,
+  isGuestToken,
+} from "../checkout/guest-token.js";
+import {
+  claimGuestCheckoutByEmail,
+  claimGuestOrderByAccessToken,
+  claimUnpaidGuestSession,
+} from "../checkout/claim-guest-checkout.js";
 import { mergeGuestCart } from "../cart/cart.service.js";
-import Order from "../order/order.model.js";
-import Payment from "../payment/payment.model.js";
 import * as authService from "./auth.service.js";
 
 const sanitizeUser = (user) => ({
@@ -13,14 +19,38 @@ const sanitizeUser = (user) => ({
   role: user.role,
 });
 
+const attachGuestCheckoutToUser = async (user, req) => {
+  const guestCartToken = String(req.get("x-guest-cart-token") || "").trim();
+  const guestOrderToken = String(req.get("x-guest-order-token") || "").trim();
+
+  if (isGuestToken(guestCartToken)) {
+    await mergeGuestCart(user._id, hashGuestToken(guestCartToken));
+    await claimUnpaidGuestSession(user, guestCartToken);
+  }
+
+  if (isGuestToken(guestOrderToken)) {
+    await claimGuestOrderByAccessToken(user, guestOrderToken);
+  }
+
+  // History for guest Magic Checkout: same email used at Razorpay checkout
+  await claimGuestCheckoutByEmail(user);
+};
+
 export const registerUser = async (req, res, next) => {
   try {
     const result = await authService.registerUser(req.body);
+    const user = result.userDocument;
+
+    if (user) {
+      await attachGuestCheckoutToUser(user, req);
+    }
 
     res.status(201).json({
       success: true,
       message: "User registered successfully",
-      data: result,
+      data: {
+        user: result.user,
+      },
     });
   } catch (error) {
     next(error);
@@ -37,25 +67,7 @@ export const loginUser = async (req, res, next) => {
     }
 
     const accessToken = generateAccessToken(user);
-    const guestCartToken = String(req.get("x-guest-cart-token") || "").trim();
-    const guestOrderToken = String(req.get("x-guest-order-token") || "").trim();
-
-    if (isGuestToken(guestCartToken)) {
-      const guestTokenHash = hashGuestToken(guestCartToken);
-      await mergeGuestCart(user._id, guestTokenHash);
-      await Order.updateMany(
-        { guestTokenHash, isActive: true, paymentStatus: { $ne: "paid" } },
-        { $set: { user: user._id, isGuest: false } }
-      );
-      await Payment.updateMany({ guestTokenHash }, { $set: { userId: user._id } });
-    }
-
-    if (isGuestToken(guestOrderToken)) {
-      await Order.updateOne(
-        { guestAccessTokenHash: hashGuestToken(guestOrderToken), isActive: true },
-        { $set: { user: user._id, isGuest: false } }
-      );
-    }
+    await attachGuestCheckoutToUser(user, req);
 
     res.status(200).json({
       success: true,

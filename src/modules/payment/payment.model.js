@@ -20,6 +20,23 @@ const paymentSchema = new mongoose.Schema(
       select: false,
       default: "",
     },
+    customerName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    customerEmail: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      default: "",
+      index: true,
+    },
+    customerPhone: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     razorpayOrderId: {
       type: String,
     },
@@ -90,6 +107,11 @@ export const ensurePaymentIndexes = async () => {
   await Payment.collection.createIndex(
     { razorpayOrderId: 1 },
     { unique: true, sparse: true, name: "razorpayOrderId_1" }
+  );
+
+  await Payment.collection.createIndex(
+    { customerEmail: 1 },
+    { name: "customerEmail_1" }
   );
 };
 

@@ -22,6 +22,7 @@ export const registerUser = async (data) => {
   });
 
   return {
+    userDocument: user,
     user: {
       id: user._id,
       name: user.name,
