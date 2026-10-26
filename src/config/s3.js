@@ -175,3 +175,34 @@ export const brandVideoUpload = multer({
   },
   fileFilter: brandVideoFileFilter,
 });
+
+const heroBannerFileFilter = (req, file, cb) => {
+  try {
+    if (file.fieldname !== "image") {
+      return cb(new AppError("Upload the banner on the image field.", 400));
+    }
+
+    if (!imageMimeTypes.includes(file.mimetype)) {
+      return cb(
+        new AppError(
+          "Invalid file type. Only JPEG, PNG, and WebP images are allowed",
+          400
+        )
+      );
+    }
+
+    return cb(null, true);
+  } catch (error) {
+    return cb(error);
+  }
+};
+
+export const HERO_BANNER_MAX_BYTES = 5 * 1024 * 1024;
+
+export const heroBannerUpload = multer({
+  storage: s3Storage,
+  limits: {
+    fileSize: HERO_BANNER_MAX_BYTES,
+  },
+  fileFilter: heroBannerFileFilter,
+});

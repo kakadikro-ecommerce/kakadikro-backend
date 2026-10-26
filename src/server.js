@@ -6,10 +6,13 @@ import connectDB from "./config/database.js";
 import routes from "./routes/index.js";
 import notFoundHandler from "./middlewares/not-found.js";
 import errorHandler from "./middlewares/error-handler.js";
+import dns from "node:dns";
 
 dotenv.config({ override: true });
 
 const app = express();
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
+
 const normalizeOrigin = (value = "") => value.trim().replace(/\/+$/, "");
 const defaultOrigins = [
   "https://kakadikro.com",
