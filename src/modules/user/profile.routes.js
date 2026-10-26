@@ -10,10 +10,32 @@ import { authorizeRoles } from "../../middlewares/role-access.js";
 
 const router = express.Router();
 
-router.get("/self-profile", protect, authorizeRoles("user"), userController.getProfile);
+// Mounted at /api/user/profile — keep paths aligned with the website client.
+router.get("/", protect, authorizeRoles("user"), userController.getProfile);
 
-router.put("/update-profile", protect, authorizeRoles("user"), validateRequest(updateProfileValidation), userController.updateProfile);
+router.put(
+  "/",
+  protect,
+  authorizeRoles("user"),
+  validateRequest(updateProfileValidation),
+  userController.updateProfile
+);
 
-router.put("/update-password", protect, authorizeRoles("user"), validateRequest(changePasswordValidation), userController.changePassword);
+router.put(
+  "/password/:id",
+  protect,
+  authorizeRoles("user"),
+  validateRequest(changePasswordValidation),
+  userController.changePassword
+);
+
+// Backward-compatible aliases (password without :id).
+router.put(
+  "/password",
+  protect,
+  authorizeRoles("user"),
+  validateRequest(changePasswordValidation),
+  userController.changePassword
+);
 
 export default router;
