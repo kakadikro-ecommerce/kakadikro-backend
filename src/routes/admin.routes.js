@@ -12,7 +12,7 @@ import adminHeroBannerRoutes from "../modules/heroBanner/admin.heroBanner.routes
 const router = express.Router();
 
 router.use("/auth", adminAuthRoutes);
-router.use("/", adminProfileRoutes);
+router.use("/porfile", adminProfileRoutes);
 router.use("/products", adminProductRoutes);
 router.use("/orders", adminOrderRoutes);
 router.use("/contacts", adminContactRoutes);

@@ -7,10 +7,10 @@ import { updateProfileValidation, changePasswordValidation } from "./admin.valid
 
 const router = express.Router();
 
-router.get("/profile", protect, authorizeRoles("admin", "super_admin"), adminController.getProfile);
+router.get("/self-profile", protect, authorizeRoles("admin", "super_admin"), adminController.getProfile);
 
-router.put("/profile", protect, authorizeRoles("admin", "super_admin"), validateRequest(updateProfileValidation), adminController.updateProfile);
+router.put("/update-profile", protect, authorizeRoles("admin", "super_admin"), validateRequest(updateProfileValidation), adminController.updateProfile);
 
-router.put("/profile/password", protect, authorizeRoles("admin", "super_admin"), validateRequest(changePasswordValidation), adminController.changePassword); 
+router.put("/update-password", protect, authorizeRoles("admin", "super_admin"), validateRequest(changePasswordValidation), adminController.changePassword); 
 
 export default router;

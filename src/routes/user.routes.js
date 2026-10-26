@@ -12,7 +12,7 @@ import userHeroBannerRoutes from "../modules/heroBanner/user.heroBanner.routes.j
 const router = express.Router();
 
 router.use("/auth", userAuthRoutes);
-router.use("/", userProfileRoutes);
+router.use("/profile", userProfileRoutes);
 router.use("/products", userProductsRoutes);
 router.use("/brand-videos", userBrandVideoRoutes);
 router.use("/hero-banners", userHeroBannerRoutes);
